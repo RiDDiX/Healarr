@@ -6,6 +6,13 @@
 
 set -e
 
+# Add custom tools directory to PATH if it exists
+# This allows users to mount custom binaries (e.g., newer ffmpeg versions)
+if [ -d "/config/tools" ]; then
+    export PATH="/config/tools:$PATH"
+    echo "Custom tools directory found at /config/tools, added to PATH"
+fi
+
 # Default values if not set
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}

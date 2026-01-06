@@ -71,14 +71,28 @@ type CmdHealthChecker struct {
 	// Paths to binaries, can be configured
 	FFprobePath   string
 	FFmpegPath    string
+	MediaInfoPath string
 	HandBrakePath string
 }
 
+// NewHealthChecker creates a health checker with default binary paths (uses PATH lookup).
 func NewHealthChecker() *CmdHealthChecker {
 	return &CmdHealthChecker{
 		FFprobePath:   "ffprobe",
 		FFmpegPath:    "ffmpeg",
+		MediaInfoPath: "mediainfo",
 		HandBrakePath: "HandBrakeCLI",
+	}
+}
+
+// NewHealthCheckerWithPaths creates a health checker with custom binary paths.
+// This allows using non-standard binary locations (e.g., /config/tools/ffprobe).
+func NewHealthCheckerWithPaths(ffprobePath, ffmpegPath, mediainfoPath, handbrakePath string) *CmdHealthChecker {
+	return &CmdHealthChecker{
+		FFprobePath:   ffprobePath,
+		FFmpegPath:    ffmpegPath,
+		MediaInfoPath: mediainfoPath,
+		HandBrakePath: handbrakePath,
 	}
 }
 
@@ -518,7 +532,7 @@ func (hc *CmdHealthChecker) runMediaInfo(path string, customArgs []string, mode 
 		}
 	}
 
-	cmd := exec.Command("mediainfo", args...)
+	cmd := exec.Command(hc.MediaInfoPath, args...)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -619,13 +633,13 @@ func (hc *CmdHealthChecker) GetCommandPreview(method DetectionMethod, mode strin
 	case DetectionMediaInfo:
 		var args []string
 		if mode == ModeThorough {
-			args = []string{"mediainfo", "--Output=JSON", "--Full"}
+			args = []string{hc.MediaInfoPath, "--Output=JSON", "--Full"}
 			if len(customArgs) > 0 {
 				args = append(args, customArgs...)
 			}
 			args = append(args, filePath)
 		} else {
-			args = []string{"mediainfo", "--Output=JSON"}
+			args = []string{hc.MediaInfoPath, "--Output=JSON"}
 			if len(customArgs) > 0 {
 				args = append(args, customArgs...)
 			}

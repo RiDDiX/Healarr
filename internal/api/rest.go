@@ -105,8 +105,14 @@ func NewRESTServer(db *sql.DB, eb *eventbus.EventBus, scanner services.Scanner, 
 		c.Next()
 	})
 
-	// Initialize tool checker and check all tools at startup
-	toolChecker := integration.NewToolChecker()
+	// Initialize tool checker with custom binary paths from config
+	cfg := config.Get()
+	toolChecker := integration.NewToolCheckerWithPaths(
+		cfg.FFprobePath,
+		cfg.FFmpegPath,
+		cfg.MediaInfoPath,
+		cfg.HandBrakePath,
+	)
 	toolChecker.CheckAllTools()
 
 	s := &RESTServer{

@@ -88,6 +88,22 @@ type Config struct {
 
 	// WebDir is the directory containing web assets (index.html, assets/, etc.)
 	WebDir string
+
+	// Binary Paths - Custom paths to detection tools (optional)
+	// If set to a bare name (e.g., "ffprobe"), uses PATH lookup
+	// If set to an absolute path (e.g., "/config/tools/ffprobe"), uses that directly
+
+	// FFprobePath is the path to ffprobe binary (default: "ffprobe")
+	FFprobePath string
+
+	// FFmpegPath is the path to ffmpeg binary (default: "ffmpeg")
+	FFmpegPath string
+
+	// MediaInfoPath is the path to mediainfo binary (default: "mediainfo")
+	MediaInfoPath string
+
+	// HandBrakePath is the path to HandBrakeCLI binary (default: "HandBrakeCLI")
+	HandBrakePath string
 }
 
 // Global singleton
@@ -222,6 +238,10 @@ func Load() *Config {
 		DatabasePath:         dbPath,
 		LogDir:               logDir,
 		WebDir:               webDir,
+		FFprobePath:          getEnvOrDefault("HEALARR_FFPROBE_PATH", "ffprobe"),
+		FFmpegPath:           getEnvOrDefault("HEALARR_FFMPEG_PATH", "ffmpeg"),
+		MediaInfoPath:        getEnvOrDefault("HEALARR_MEDIAINFO_PATH", "mediainfo"),
+		HandBrakePath:        getEnvOrDefault("HEALARR_HANDBRAKE_PATH", "HandBrakeCLI"),
 	}
 
 	// Validate log level
@@ -298,6 +318,10 @@ func NewTestConfig() *Config {
 		DatabasePath:         "/tmp/healarr-test/healarr.db",
 		LogDir:               "/tmp/healarr-test/logs",
 		WebDir:               "",
+		FFprobePath:          "ffprobe",
+		FFmpegPath:           "ffmpeg",
+		MediaInfoPath:        "mediainfo",
+		HandBrakePath:        "HandBrakeCLI",
 	}
 }
 

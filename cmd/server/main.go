@@ -193,9 +193,14 @@ func main() {
 		logger.Infof("✓ Path Mapper initialized")
 	}
 
-	// HealthChecker
+	// HealthChecker (with custom binary paths from config)
 	logger.Infof("Initializing Health Checker (corruption detection engine)...")
-	healthChecker := integration.NewHealthChecker()
+	healthChecker := integration.NewHealthCheckerWithPaths(
+		cfg.FFprobePath,
+		cfg.FFmpegPath,
+		cfg.MediaInfoPath,
+		cfg.HandBrakePath,
+	)
 	logger.Infof("✓ Health Checker initialized (ffprobe, mediainfo, handbrake)")
 
 	// ArrClient

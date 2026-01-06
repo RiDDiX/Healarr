@@ -2,7 +2,9 @@ package integration
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -24,13 +26,48 @@ type ToolStatus struct {
 type ToolChecker struct {
 	mu    sync.RWMutex
 	tools map[string]*ToolStatus
+	// Configured binary paths (optional, empty uses PATH lookup with default names)
+	ffprobePath   string
+	ffmpegPath    string
+	mediaInfoPath string
+	handBrakePath string
 }
 
-// NewToolChecker creates a new tool checker instance
+// NewToolChecker creates a new tool checker instance with default binary names
 func NewToolChecker() *ToolChecker {
 	return &ToolChecker{
-		tools: make(map[string]*ToolStatus),
+		tools:         make(map[string]*ToolStatus),
+		ffprobePath:   "ffprobe",
+		ffmpegPath:    "ffmpeg",
+		mediaInfoPath: "mediainfo",
+		handBrakePath: "HandBrakeCLI",
 	}
+}
+
+// NewToolCheckerWithPaths creates a tool checker with custom binary paths.
+// Paths can be either bare names (uses PATH lookup) or absolute paths.
+func NewToolCheckerWithPaths(ffprobePath, ffmpegPath, mediainfoPath, handbrakePath string) *ToolChecker {
+	return &ToolChecker{
+		tools:         make(map[string]*ToolStatus),
+		ffprobePath:   ffprobePath,
+		ffmpegPath:    ffmpegPath,
+		mediaInfoPath: mediainfoPath,
+		handBrakePath: handbrakePath,
+	}
+}
+
+// resolveBinaryPath resolves a binary path, handling both absolute paths and PATH lookup.
+// Returns the resolved path and any error encountered.
+func resolveBinaryPath(binaryPath string) (string, error) {
+	if filepath.IsAbs(binaryPath) {
+		// Absolute path - check if file exists and is executable
+		if _, err := os.Stat(binaryPath); err != nil {
+			return "", err
+		}
+		return binaryPath, nil
+	}
+	// Relative/bare name - use PATH lookup
+	return exec.LookPath(binaryPath)
 }
 
 // CheckAllTools checks availability of all detection tools and caches results
@@ -112,9 +149,9 @@ func (tc *ToolChecker) checkFFprobe() *ToolStatus {
 		Description: "Primary tool for media file analysis (quick mode)",
 	}
 
-	path, err := exec.LookPath("ffprobe")
+	path, err := resolveBinaryPath(tc.ffprobePath)
 	if err != nil {
-		logger.Debugf("ffprobe not found in PATH: %v", err)
+		logger.Debugf("ffprobe not found at %s: %v", tc.ffprobePath, err)
 		return status
 	}
 
@@ -143,9 +180,9 @@ func (tc *ToolChecker) checkFFmpeg() *ToolStatus {
 		Description: "Required for thorough mode (full file decode)",
 	}
 
-	path, err := exec.LookPath("ffmpeg")
+	path, err := resolveBinaryPath(tc.ffmpegPath)
 	if err != nil {
-		logger.Debugf("ffmpeg not found in PATH: %v", err)
+		logger.Debugf("ffmpeg not found at %s: %v", tc.ffmpegPath, err)
 		return status
 	}
 
@@ -173,9 +210,9 @@ func (tc *ToolChecker) checkMediaInfo() *ToolStatus {
 		Description: "Alternative detection method for detailed media analysis",
 	}
 
-	path, err := exec.LookPath("mediainfo")
+	path, err := resolveBinaryPath(tc.mediaInfoPath)
 	if err != nil {
-		logger.Debugf("mediainfo not found in PATH: %v", err)
+		logger.Debugf("mediainfo not found at %s: %v", tc.mediaInfoPath, err)
 		return status
 	}
 
@@ -204,9 +241,9 @@ func (tc *ToolChecker) checkHandBrake() *ToolStatus {
 		Description: "Alternative detection method using HandBrake CLI",
 	}
 
-	path, err := exec.LookPath("HandBrakeCLI")
+	path, err := resolveBinaryPath(tc.handBrakePath)
 	if err != nil {
-		logger.Debugf("HandBrakeCLI not found in PATH: %v", err)
+		logger.Debugf("HandBrakeCLI not found at %s: %v", tc.handBrakePath, err)
 		return status
 	}
 
