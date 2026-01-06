@@ -32,8 +32,9 @@ services:
       - /path/to/appdata/healarr:/config
 
       # Optional: Custom binaries directory (auto-added to PATH)
-      # Place ffmpeg, ffprobe, mediainfo, or HandBrakeCLI here for custom versions
-      # - /path/to/custom-binaries:/config/tools
+      # Mount a folder containing custom ffmpeg, ffprobe, mediainfo, or HandBrakeCLI
+      # The folder should contain the executable files directly (e.g., ffmpeg, ffprobe)
+      # - /path/to/folder-with-binaries:/config/tools
 
       # Media libraries - must match your *arr paths
       # Mount as read-only (:ro) - Healarr only needs to scan files

@@ -360,15 +360,18 @@ The Docker image includes ffmpeg, MediaInfo, and HandBrake from Alpine packages.
 
 #### Option 1: Tools Directory (Recommended)
 
-Place custom binaries in a `tools` subdirectory of your data directory:
+Place custom binaries in a `tools` subdirectory of your config volume. You can either:
+- Create a `tools` folder inside your existing config directory, or
+- Mount a separate directory containing your custom binaries:
 
 ```yaml
 volumes:
   - /path/to/config:/config
-  - /path/to/custom-ffmpeg:/config/tools  # Contains ffmpeg, ffprobe, etc.
+  # Mount a directory containing custom binaries (ffmpeg, ffprobe, etc.)
+  - /path/to/custom-binaries-folder:/config/tools
 ```
 
-Any executables in this directory automatically take precedence over system binaries.
+The mounted directory should contain the executable files directly (e.g., `ffmpeg`, `ffprobe`, `mediainfo`). Any executables in this directory automatically take precedence over system binaries.
 
 **Example: Using static ffmpeg builds**
 ```bash
