@@ -8,9 +8,11 @@ set -e
 
 # Add custom tools directory to PATH if it exists
 # This allows users to mount custom binaries (e.g., newer ffmpeg versions)
-if [ -d "/config/tools" ]; then
-    export PATH="/config/tools:$PATH"
-    echo "Custom tools directory found at /config/tools, added to PATH"
+# Uses HEALARR_DATA_DIR if set, otherwise defaults to /config
+TOOLS_DIR="${HEALARR_DATA_DIR:-/config}/tools"
+if [ -d "$TOOLS_DIR" ]; then
+    export PATH="$TOOLS_DIR:$PATH"
+    echo "Custom tools directory found at $TOOLS_DIR, added to PATH"
 fi
 
 # Default values if not set

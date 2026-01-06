@@ -100,10 +100,10 @@ EXPOSE 3090
 # Volume for persistent data
 VOLUME ["/config"]
 
-# Custom binaries: Mount newer versions to /config/tools (auto-added to PATH)
+# Custom binaries: Mount newer versions to $HEALARR_DATA_DIR/tools (auto-added to PATH)
 # Or set environment variables for specific paths:
 #   HEALARR_FFPROBE_PATH, HEALARR_FFMPEG_PATH,
 #   HEALARR_MEDIAINFO_PATH, HEALARR_HANDBRAKE_PATH
-# Example: docker run -v /path/to/custom/ffmpeg:/config/tools/ffmpeg ...
+# Example: docker run -v /path/to/ffmpeg-static:/config/tools ...
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
