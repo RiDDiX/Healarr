@@ -404,8 +404,10 @@ func (s *RESTServer) importConfig(c *gin.Context) {
 	notifCount := s.importNotifications(req.Notifications)
 
 	// Reload path mappings and scheduler
-	if err := s.pathMapper.Reload(); err != nil {
-		logger.Errorf("Failed to reload path mappings after import: %v", err)
+	if s.pathMapper != nil {
+		if err := s.pathMapper.Reload(); err != nil {
+			logger.Errorf("Failed to reload path mappings after import: %v", err)
+		}
 	}
 	if s.scheduler != nil {
 		if err := s.scheduler.LoadSchedules(); err != nil {

@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.20] - 2026-01-06
+
+### Added
+- **Onboarding API endpoints**: Backend support for first-time setup wizard
+  - `GET /api/setup/status` - Returns setup state (needs_setup, has_password, has_instances, etc.)
+  - `POST /api/setup/dismiss` - Allows power users to skip the onboarding wizard
+  - `POST /api/setup/import` - Import JSON config during first-time setup (public endpoint)
+  - `POST /api/setup/restore` - Restore database backup during first-time setup (public endpoint)
+- **Database restore functionality**: New `POST /api/config/restore` endpoint for authenticated users
+  - Validates uploaded SQLite database before restore
+  - Creates pre-restore backup automatically
+  - Stages restore as `.pending` file (restart applies changes)
+  - Requires `X-Confirm-Restore: true` header for safety
+
+### Fixed
+- **Null pointer in config import**: Added nil check for pathMapper before calling Reload()
+
 ## [1.1.19] - 2026-01-06
 
 ### Fixed

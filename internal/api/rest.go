@@ -205,6 +205,12 @@ func (s *RESTServer) setupRoutes() {
 		api.GET("/auth/status", s.handleAuthStatus)
 		api.POST("/webhook/:instance_id", WebhookLimiter.Middleware(), s.handleWebhook) // Webhooks use API key in query or header
 
+		// Onboarding/Setup endpoints (public, for first-time setup wizard)
+		api.GET("/setup/status", s.handleSetupStatus)
+		api.POST("/setup/dismiss", s.handleSetupDismiss)
+		api.POST("/setup/import", s.handleConfigImportPublic)     // Config import during setup
+		api.POST("/setup/restore", s.handleDatabaseRestorePublic) // Database restore during setup
+
 		// Protected endpoints (require password authentication)
 		protected := api.Group("")
 		protected.Use(s.authMiddleware())
@@ -244,6 +250,7 @@ func (s *RESTServer) setupRoutes() {
 			protected.GET("/config/export", s.exportConfig)
 			protected.POST("/config/import", s.importConfig)
 			protected.GET("/config/backup", s.downloadDatabaseBackup)
+			protected.POST("/config/restore", s.handleDatabaseRestore)
 
 			// Detection preview - shows what command will be run
 			protected.GET("/config/detection-preview", s.getDetectionPreview)
