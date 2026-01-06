@@ -34,9 +34,12 @@ INSERT OR REPLACE INTO corruption_summary (
 )
 SELECT
     aggregate_id as corruption_id,
-    (SELECT event_type FROM events e2
-     WHERE e2.aggregate_id = e.aggregate_id
-     ORDER BY id DESC LIMIT 1) as current_state,
+    COALESCE(
+        (SELECT event_type FROM events e2
+         WHERE e2.aggregate_id = e.aggregate_id
+         ORDER BY id DESC LIMIT 1),
+        'Unknown'
+    ) as current_state,
     (SELECT COUNT(*) FROM events e3
      WHERE e3.aggregate_id = e.aggregate_id
      AND e3.event_type LIKE '%Failed') as retry_count,

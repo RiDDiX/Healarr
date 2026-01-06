@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.19] - 2026-01-06
+
+### Fixed
+- **Migration 004 NULL safety**: Added COALESCE wrapper for `current_state` column population
+  - Migration could fail with "NOT NULL constraint failed" on databases with corrupt or inconsistent event data
+  - Now gracefully handles missing events by setting `current_state` to 'Unknown'
+  - Only affected users upgrading from pre-1.1.18 with database corruption
+
 ## [1.1.18] - 2026-01-06
 
 ### Added
