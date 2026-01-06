@@ -354,6 +354,54 @@ For instant scanning when downloads complete:
 
 Configure per scan path in Config.
 
+### Using Custom Binary Versions
+
+The Docker image includes ffmpeg, MediaInfo, and HandBrake from Alpine packages. If you need newer versions (e.g., for specific codec support), you have two options:
+
+#### Option 1: Tools Directory (Recommended)
+
+Place custom binaries in a `tools` subdirectory of your data directory:
+
+```yaml
+volumes:
+  - /path/to/config:/config
+  - /path/to/custom-ffmpeg:/config/tools  # Contains ffmpeg, ffprobe, etc.
+```
+
+Any executables in this directory automatically take precedence over system binaries.
+
+**Example: Using static ffmpeg builds**
+```bash
+# Download static ffmpeg (includes ffprobe)
+wget https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz
+tar -xf ffmpeg-release-amd64-static.tar.xz
+
+# Copy to your tools directory
+mkdir -p /path/to/config/tools
+cp ffmpeg-*-static/ffmpeg ffmpeg-*-static/ffprobe /path/to/config/tools/
+```
+
+#### Option 2: Environment Variables
+
+Specify exact paths to binaries:
+
+```yaml
+environment:
+  - HEALARR_FFPROBE_PATH=/custom/path/ffprobe
+  - HEALARR_FFMPEG_PATH=/custom/path/ffmpeg
+  - HEALARR_MEDIAINFO_PATH=/custom/path/mediainfo
+  - HEALARR_HANDBRAKE_PATH=/custom/path/HandBrakeCLI
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HEALARR_FFPROBE_PATH` | `ffprobe` | Path to ffprobe binary |
+| `HEALARR_FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg binary |
+| `HEALARR_MEDIAINFO_PATH` | `mediainfo` | Path to mediainfo binary |
+| `HEALARR_HANDBRAKE_PATH` | `HandBrakeCLI` | Path to HandBrakeCLI binary |
+
+> **Note:** The Docker image (Alpine 3.23) includes ffmpeg 8.0.1, HandBrake 1.10.2, and MediaInfo 25.09. Custom binaries are only needed for specific requirements.
+
 ## Notifications
 
 Healarr can notify you about:

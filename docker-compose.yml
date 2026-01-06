@@ -21,10 +21,20 @@ services:
       # - HEALARR_BASE_PATH=/healarr         # For reverse proxy subdirectory
       # - HEALARR_VERIFICATION_TIMEOUT=72h   # How long to wait for re-download
       # - HEALARR_DEFAULT_MAX_RETRIES=3      # Max remediation attempts
+
+      # Custom binary paths (optional - for newer ffmpeg/mediainfo/handbrake):
+      # - HEALARR_FFPROBE_PATH=/config/tools/ffprobe
+      # - HEALARR_FFMPEG_PATH=/config/tools/ffmpeg
+      # - HEALARR_MEDIAINFO_PATH=/config/tools/mediainfo
+      # - HEALARR_HANDBRAKE_PATH=/config/tools/HandBrakeCLI
     volumes:
       # Persistent data (database, logs, backups)
       - /path/to/appdata/healarr:/config
-      
+
+      # Optional: Custom binaries directory (auto-added to PATH)
+      # Place ffmpeg, ffprobe, mediainfo, or HandBrakeCLI here for custom versions
+      # - /path/to/custom-binaries:/config/tools
+
       # Media libraries - must match your *arr paths
       # Mount as read-only (:ro) - Healarr only needs to scan files
       - /path/to/media:/mnt/media:ro

@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.18] - 2026-01-06
+
+### Added
+- **Custom binary path configuration**: Use custom or newer versions of detection tools
+  - Environment variables: `HEALARR_FFPROBE_PATH`, `HEALARR_FFMPEG_PATH`, `HEALARR_MEDIAINFO_PATH`, `HEALARR_HANDBRAKE_PATH`
+  - Tools directory: Place binaries in `$HEALARR_DATA_DIR/tools/` (default: `/config/tools/`) - auto-added to PATH
+  - Supports both absolute paths and PATH-based lookup
+  - Useful for users needing newer codec support or specific tool versions
+
+### Changed
+- **Alpine Linux upgrade**: Updated from Alpine 3.20 to Alpine 3.23
+  - ffmpeg: 6.1.1 → **8.0.1**
+  - HandBrake: 1.6.1 → **1.10.2**
+  - MediaInfo: 24.04 → **25.09**
+- **Notifier shutdown**: `Stop()` now waits for background goroutine to exit, preventing test race conditions
+
+### Fixed
+- **Test deadlock in notifier**: Fixed race condition where `CreateConfig()` triggered a reload that raced with test cleanup
+  - Added `sync.WaitGroup` to ensure clean shutdown sequence
+
 ## [1.1.17] - 2026-01-06
 
 ### Security
