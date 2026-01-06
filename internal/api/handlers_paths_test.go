@@ -664,7 +664,12 @@ func TestBrowseDirectory_NonExistent(t *testing.T) {
 	router, apiKey, serverCleanup := setupPathsTestServer(t, db)
 	defer serverCleanup()
 
-	req, _ := http.NewRequest("GET", "/api/config/browse?path=/nonexistent/path/12345", nil)
+	// Create a temp directory we control, then use a non-existent subpath
+	// This avoids platform-specific permission issues with /nonexistent
+	tmpDir := t.TempDir()
+	nonExistentPath := filepath.Join(tmpDir, "does_not_exist", "subdir")
+
+	req, _ := http.NewRequest("GET", "/api/config/browse?path="+nonExistentPath, nil)
 	req.Header.Set("X-API-Key", apiKey)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
