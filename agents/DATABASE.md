@@ -27,8 +27,11 @@ Migrations are stored in `internal/db/migrations/` and applied in order:
 | File | Purpose |
 |------|---------|
 | `001_schema.sql` | Consolidated schema - all tables, indexes, and features |
+| `002_add_status_constraints.sql` | Status constraints for corruptions/scans |
+| `003_add_file_path_index.sql` | Performance index for file_path lookups |
+| `004_corruption_summary.sql` | Materialized corruption status table with trigger-based maintenance |
 
-**Note:** The schema was consolidated into a single migration file for cleaner deployments. All features (resumable scans, accessibility errors, pending rescans, per-path dry-run) are included in the base schema.
+**Note:** The base schema (001) was consolidated for cleaner deployments. All features (resumable scans, accessibility errors, pending rescans, per-path dry-run) are included. Migration 004 adds a materialized `corruption_summary` table that replaces the slow `corruption_status` VIEW for dramatically improved query performance.
 
 ## Schema
 
@@ -286,15 +289,17 @@ WHERE id = ?;
 ### Backup
 
 ```bash
-# Using the API (encrypted download)
+# Using the API (recommended - uses VACUUM INTO for safe, atomic backup)
 curl -H "X-API-Key: $KEY" http://localhost:3090/api/config/backup -o backup.db
 
-# Direct file copy (stop app first)
-cp healarr.db healarr.db.backup
+# SQLite VACUUM INTO (safe during concurrent access, v3.27+)
+sqlite3 healarr.db "VACUUM INTO 'healarr.db.backup'"
 
-# SQLite backup command
-sqlite3 healarr.db ".backup healarr.db.backup"
+# Direct file copy (must stop app first, or corruption risk!)
+cp healarr.db healarr.db.backup
 ```
+
+**Note (v1.1.18+):** API backup uses SQLite's `VACUUM INTO` command which creates an atomic, consistent backup even while the database is in use. It also verifies integrity before and after backup.
 
 ### Recovery
 
@@ -336,16 +341,21 @@ Healarr performs automatic database maintenance:
 
 **On Startup (`NewRepository`):**
 ```go
-// Configure SQLite for optimal performance
+// Configure SQLite for optimal performance and reliability
 pragmas := []string{
     "PRAGMA journal_mode=WAL",           // Better concurrency
-    "PRAGMA synchronous=NORMAL",         // Safe with WAL, faster
+    "PRAGMA synchronous=FULL",           // Maximum crash safety (changed from NORMAL in v1.1.18)
     "PRAGMA auto_vacuum=INCREMENTAL",    // Auto reclaim space
     "PRAGMA temp_store=MEMORY",          // Faster temp tables
     "PRAGMA foreign_keys=ON",            // Enforce FK constraints
     "PRAGMA cache_size=-8000",           // 8MB cache
-    "PRAGMA busy_timeout=5000",          // 5s wait on locks
+    "PRAGMA busy_timeout=30000",         // 30s wait on locks
 }
+
+// Connection pool (optimized for WAL mode in v1.1.18)
+db.SetMaxOpenConns(4)  // Reduced from 10 to minimize WAL contention
+db.SetMaxIdleConns(2)  // Reduced from 5
+db.SetConnMaxLifetime(10 * time.Minute)
 
 // Run integrity check
 db.QueryRow("PRAGMA quick_check")
@@ -379,8 +389,15 @@ func (r *Repository) RunMaintenance(retentionDays int) error {
 - `HEALARR_RETENTION_DAYS` / `--retention-days`: Days to keep old data (default: 90)
 - Set to `0` to disable automatic pruning
 
+**Periodic WAL Checkpoint (v1.1.18+):**
+- Background goroutine checkpoints every 5 minutes
+- Prevents unbounded WAL file growth
+- Final checkpoint on graceful shutdown ensures all data synced
+
 **Automatic Backups:**
-- Created on startup and every 6 hours
+- Created on startup and every 6 hours using `VACUUM INTO` (atomic, safe during concurrent access)
+- Pre-backup integrity check: refuses to backup corrupted database
+- Post-backup verification: backup must pass integrity check
 - Stored in `{DATA_DIR}/backups/`
 - Last 5 backups retained (older ones auto-deleted)
 

@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -426,6 +425,7 @@ func (s *RESTServer) importConfig(c *gin.Context) {
 }
 
 // downloadDatabaseBackup creates a fresh backup of the database and sends it to the client
+// Uses VACUUM INTO for atomic, consistent backups that are safe during concurrent access.
 func (s *RESTServer) downloadDatabaseBackup(c *gin.Context) {
 	cfg := config.Get()
 	dbPath := cfg.DatabasePath
@@ -443,38 +443,12 @@ func (s *RESTServer) downloadDatabaseBackup(c *gin.Context) {
 	backupFilename := fmt.Sprintf("healarr_backup_%s.db", timestamp)
 	backupPath := filepath.Join(backupDir, backupFilename)
 
-	// Force a WAL checkpoint to ensure all data is in the main database file
-	_, err := s.db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	// Use VACUUM INTO for atomic backup - safe during concurrent access
+	_, err := s.db.Exec(fmt.Sprintf("VACUUM INTO '%s'", backupPath))
 	if err != nil {
-		logger.Debugf("WAL checkpoint failed (might not be in WAL mode): %v", err)
-	}
-
-	// Copy the database file
-	srcFile, err := os.Open(dbPath)
-	if err != nil {
-		logger.Errorf("Failed to open source database: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to open database"})
-		return
-	}
-	defer srcFile.Close()
-
-	dstFile, err := os.Create(backupPath)
-	if err != nil {
-		logger.Errorf("Failed to create backup file: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create backup file"})
-		return
-	}
-
-	_, err = io.Copy(dstFile, srcFile)
-	if closeErr := dstFile.Close(); closeErr != nil {
-		logger.Debugf("Failed to close backup file: %v", closeErr)
-	}
-	if err != nil {
-		if rmErr := os.Remove(backupPath); rmErr != nil {
-			logger.Debugf("Failed to remove partial backup: %v", rmErr)
-		}
-		logger.Errorf("Failed to copy database: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to copy database"})
+		_ = os.Remove(backupPath)
+		logger.Errorf("Failed to create backup: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create backup"})
 		return
 	}
 

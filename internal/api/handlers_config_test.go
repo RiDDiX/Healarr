@@ -830,35 +830,9 @@ func TestExportConfig_DecryptError(t *testing.T) {
 	assert.Equal(t, "[DECRYPTION_ERROR]", instance["api_key"])
 }
 
-func TestDownloadDatabaseBackup_SourceOpenError(t *testing.T) {
-	db, cleanup := setupConfigTestDB(t)
-	defer cleanup()
-
-	// Create a valid temp directory but point to non-existent database file
-	tmpDir := t.TempDir()
-	nonExistentDB := filepath.Join(tmpDir, "nonexistent.db")
-
-	config.SetForTesting(&config.Config{
-		DatabasePath:      nonExistentDB,
-		DefaultMaxRetries: 3,
-	})
-
-	mockPathMapper := &testutil.MockPathMapper{}
-	router, apiKey, serverCleanup := setupConfigTestServer(t, db, mockPathMapper, false)
-	defer serverCleanup()
-
-	req, _ := http.NewRequest("GET", "/api/config/backup", nil)
-	req.Header.Set("X-API-Key", apiKey)
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-
-	// Should return error when source file doesn't exist
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-
-	var response map[string]interface{}
-	json.Unmarshal(w.Body.Bytes(), &response)
-	assert.Equal(t, "Failed to open database", response["error"])
-}
+// Note: TestDownloadDatabaseBackup_SourceOpenError was removed because with VACUUM INTO,
+// the handler uses the already-connected s.db rather than opening from config.DatabasePath.
+// There's no "source open" step that can fail independently.
 
 func TestDownloadDatabaseBackup_BackupDirCreationError(t *testing.T) {
 	db, cleanup := setupConfigTestDB(t)
@@ -941,12 +915,13 @@ func TestDownloadDatabaseBackup_BackupFileCreationError(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	// Should return error when backup file can't be created
+	// Should return error when backup file can't be created (VACUUM INTO fails)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
-	assert.Equal(t, "Failed to create backup file", response["error"])
+	// With VACUUM INTO, the error message is "Failed to create backup"
+	assert.Equal(t, "Failed to create backup", response["error"])
 }
 
 func TestRestartServer_ReturnsOK(t *testing.T) {

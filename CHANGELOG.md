@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tools directory: Place binaries in `$HEALARR_DATA_DIR/tools/` (default: `/config/tools/`) - auto-added to PATH
   - Supports both absolute paths and PATH-based lookup
   - Useful for users needing newer codec support or specific tool versions
+- **Periodic WAL checkpoint**: Background goroutine checkpoints every 5 minutes to prevent unbounded WAL file growth
+- **Graceful shutdown with checkpoint**: Final WAL checkpoint on shutdown ensures all data is synced to main database file
 
 ### Changed
 - **Alpine Linux upgrade**: Updated from Alpine 3.20 to Alpine 3.23
@@ -20,6 +22,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - HandBrake: 1.6.1 → **1.10.2**
   - MediaInfo: 24.04 → **25.09**
 - **Notifier shutdown**: `Stop()` now waits for background goroutine to exit, preventing test race conditions
+- **Database reliability overhaul**: Major improvements to prevent database corruption
+  - Backup mechanism: Replaced unsafe file copy with SQLite `VACUUM INTO` for atomic, consistent backups
+  - Pre-backup integrity check: Refuses to backup if source database fails integrity check
+  - Post-backup verification: Opens backup and runs integrity check before accepting it
+  - Synchronous mode: Changed from `PRAGMA synchronous=NORMAL` to `FULL` for crash safety
+  - Connection pool: Reduced from 10→4 connections to minimize WAL contention
+- **Corruption status performance**: Added `corruption_summary` materialized table with trigger-based maintenance
+  - Replaces slow VIEW with 8 correlated subqueries (O(n*m) → O(1) lookups)
+  - Automatically maintained via SQLite trigger on event inserts
+  - Backwards-compatible: existing `corruption_status` VIEW now wraps the table
 
 ### Fixed
 - **Test deadlock in notifier**: Fixed race condition where `CreateConfig()` triggered a reload that raced with test cleanup

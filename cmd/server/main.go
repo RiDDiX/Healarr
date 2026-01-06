@@ -127,7 +127,7 @@ func main() {
 		logger.Errorf("Failed to initialize database: %v", err)
 		os.Exit(1)
 	}
-	defer repo.Close()
+	// Note: GracefulClose is called explicitly in shutdown section
 	logger.Infof("✓ Database initialized successfully")
 
 	// Create a database backup on startup
@@ -147,6 +147,13 @@ func main() {
 			}
 		}
 	}()
+
+	// Start periodic WAL checkpoint (every 5 minutes)
+	// This prevents the WAL file from growing too large and ensures
+	// data is regularly synced to the main database file
+	stopCheckpoint := repo.StartPeriodicCheckpoint(5 * time.Minute)
+	defer stopCheckpoint()
+	logger.Debugf("✓ Periodic WAL checkpoint started (every 5 minutes)")
 
 	// Start scheduled maintenance goroutine (daily at 3 AM local time)
 	go func() {
@@ -337,11 +344,9 @@ func main() {
 		logger.Infof("✓ API Server stopped")
 	}
 
-	logger.Infof("Closing database connection...")
-	if err := repo.Close(); err != nil {
+	logger.Infof("Closing database connection (with final checkpoint)...")
+	if err := repo.GracefulClose(); err != nil {
 		logger.Errorf("Failed to close database connection: %v", err)
-	} else {
-		logger.Infof("✓ Database connection closed")
 	}
 
 	logger.Infof(logSeparator)

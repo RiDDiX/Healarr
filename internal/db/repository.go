@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"embed"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -44,9 +43,9 @@ func NewRepository(dbPath string) (*Repository, error) {
 
 	// Configure connection pool for SQLite with WAL mode
 	// WAL mode allows multiple concurrent readers + 1 writer
-	// Higher connection count enables parallel reads for better concurrency
-	db.SetMaxOpenConns(10)                 // Allow concurrent readers (WAL mode safe)
-	db.SetMaxIdleConns(5)                  // Keep connections ready for reuse
+	// Fewer connections reduces lock contention in SQLite
+	db.SetMaxOpenConns(4)                  // 4 connections is optimal for WAL mode
+	db.SetMaxIdleConns(2)                  // Keep 2 connections ready for reuse
 	db.SetConnMaxLifetime(0)               // Don't close connections due to age
 	db.SetConnMaxIdleTime(5 * time.Minute) // Close idle connections after 5 minutes
 
@@ -105,8 +104,9 @@ func configureSQLite(db *sql.DB) error {
 
 	// Non-critical pragmas - log failures but continue
 	optionalPragmas := []string{
-		// Synchronous NORMAL is safe with WAL and faster than FULL
-		"PRAGMA synchronous=NORMAL",
+		// Synchronous FULL ensures durability even on power loss during checkpoint
+		// Slightly slower than NORMAL but prevents corruption on unexpected shutdown
+		"PRAGMA synchronous=FULL",
 		// Auto-vacuum in incremental mode - reclaims space automatically
 		"PRAGMA auto_vacuum=INCREMENTAL",
 		// Store temp tables in memory for performance
@@ -143,8 +143,69 @@ func (r *Repository) Close() error {
 	return r.DB.Close()
 }
 
+// GracefulClose performs a clean shutdown of the database:
+// 1. Runs a WAL checkpoint to merge all WAL content into main database
+// 2. Syncs to disk
+// 3. Closes the database connection
+// This should be called on application shutdown to ensure data integrity.
+func (r *Repository) GracefulClose() error {
+	logger.Infof("Database: initiating graceful shutdown...")
+
+	// Run final checkpoint to merge WAL into main database
+	if _, err := r.DB.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logger.Warnf("Shutdown WAL checkpoint failed: %v", err)
+	} else {
+		logger.Debugf("✓ WAL checkpoint completed")
+	}
+
+	// Close database
+	if err := r.DB.Close(); err != nil {
+		return fmt.Errorf("failed to close database: %w", err)
+	}
+
+	logger.Infof("✓ Database shutdown complete")
+	return nil
+}
+
+// Checkpoint runs a passive WAL checkpoint (non-blocking).
+// Call this periodically to prevent WAL file from growing too large.
+func (r *Repository) Checkpoint() error {
+	_, err := r.DB.Exec("PRAGMA wal_checkpoint(PASSIVE)")
+	if err != nil {
+		return fmt.Errorf("checkpoint failed: %w", err)
+	}
+	return nil
+}
+
+// StartPeriodicCheckpoint starts a background goroutine that runs
+// WAL checkpoints at the specified interval. Returns a stop function.
+func (r *Repository) StartPeriodicCheckpoint(interval time.Duration) func() {
+	stopCh := make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				if err := r.Checkpoint(); err != nil {
+					logger.Debugf("Periodic checkpoint failed: %v", err)
+				}
+			}
+		}
+	}()
+
+	return func() {
+		close(stopCh)
+	}
+}
+
 // recreateViews drops and recreates database views to ensure they match the latest schema.
 // This is necessary because SQLite views are not automatically updated when the schema changes.
+// Note: corruption_status VIEW is now a thin wrapper over corruption_summary TABLE for backwards compatibility.
 func (r *Repository) recreateViews() error {
 	// Drop existing views
 	views := []string{"corruption_status", "dashboard_stats"}
@@ -154,77 +215,142 @@ func (r *Repository) recreateViews() error {
 		}
 	}
 
-	// Recreate corruption_status view
-	_, err := r.DB.Exec(`
-		CREATE VIEW corruption_status AS
-		SELECT
-			aggregate_id as corruption_id,
-			(SELECT event_type FROM events e2
-			 WHERE e2.aggregate_id = e.aggregate_id
-			 ORDER BY id DESC LIMIT 1) as current_state,
-			(SELECT COUNT(*) FROM events e3
-			 WHERE e3.aggregate_id = e.aggregate_id
-			 AND e3.event_type LIKE '%Failed') as retry_count,
-			(SELECT json_extract(event_data, '$.file_path') FROM events e4
-			 WHERE e4.aggregate_id = e.aggregate_id
-			 AND e4.event_type = 'CorruptionDetected'
-			 LIMIT 1) as file_path,
-			(SELECT json_extract(event_data, '$.path_id') FROM events e7
-			 WHERE e7.aggregate_id = e.aggregate_id
-			 AND e7.event_type = 'CorruptionDetected'
-			 LIMIT 1) as path_id,
-			(SELECT json_extract(event_data, '$.error') FROM events e5
-			 WHERE e5.aggregate_id = e.aggregate_id
-			 ORDER BY id DESC LIMIT 1) as last_error,
-			(SELECT json_extract(event_data, '$.corruption_type') FROM events e6
-			 WHERE e6.aggregate_id = e.aggregate_id
-			 AND e6.event_type = 'CorruptionDetected'
-			 LIMIT 1) as corruption_type,
-			MIN(created_at) as detected_at,
-			MAX(created_at) as last_updated_at
-		FROM events e
-		WHERE aggregate_type = 'corruption'
-		GROUP BY aggregate_id
-	`)
+	// Check if corruption_summary table exists (migration 004)
+	var tableExists int
+	err := r.DB.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='corruption_summary'").Scan(&tableExists)
 	if err != nil {
-		return fmt.Errorf("failed to create corruption_status view: %w", err)
+		return fmt.Errorf("failed to check for corruption_summary table: %w", err)
 	}
 
-	// Recreate dashboard_stats view with updated in_progress logic
-	_, err = r.DB.Exec(`
-		CREATE VIEW dashboard_stats AS
-		SELECT
-			COUNT(DISTINCT CASE
-				WHEN current_state != 'VerificationSuccess'
-				AND current_state != 'MaxRetriesReached'
-				AND current_state != 'CorruptionIgnored'
-				AND current_state != 'ImportBlocked'
-				AND current_state != 'ManuallyRemoved'
-				THEN corruption_id END) as active_corruptions,
-			COUNT(DISTINCT CASE
-				WHEN current_state = 'VerificationSuccess'
-				THEN corruption_id END) as resolved_corruptions,
-			COUNT(DISTINCT CASE
-				WHEN current_state = 'MaxRetriesReached'
-				THEN corruption_id END) as orphaned_corruptions,
-			COUNT(DISTINCT CASE
-				WHEN (current_state LIKE '%Started'
-				OR current_state LIKE '%Queued'
-				OR current_state LIKE '%Progress'
-				OR current_state = 'SearchCompleted'
-				OR current_state = 'DeletionCompleted'
-				OR current_state = 'FileDetected')
-				AND current_state != 'CorruptionIgnored'
-				THEN corruption_id END) as in_progress,
-			COUNT(DISTINCT CASE
-				WHEN current_state = 'ImportBlocked'
-				OR current_state = 'ManuallyRemoved'
-				THEN corruption_id END) as manual_intervention_required
-		FROM corruption_status
-		WHERE current_state != 'CorruptionIgnored'
-	`)
-	if err != nil {
-		return fmt.Errorf("failed to create dashboard_stats view: %w", err)
+	if tableExists > 0 {
+		// Use new corruption_summary table (fast path)
+		// corruption_status VIEW is a thin wrapper for backwards compatibility
+		_, err = r.DB.Exec(`
+			CREATE VIEW corruption_status AS
+			SELECT
+				corruption_id,
+				current_state,
+				retry_count,
+				file_path,
+				path_id,
+				last_error,
+				corruption_type,
+				detected_at,
+				last_updated_at
+			FROM corruption_summary
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to create corruption_status view: %w", err)
+		}
+
+		// dashboard_stats uses corruption_summary directly for maximum performance
+		_, err = r.DB.Exec(`
+			CREATE VIEW dashboard_stats AS
+			SELECT
+				COUNT(CASE
+					WHEN current_state != 'VerificationSuccess'
+					AND current_state != 'MaxRetriesReached'
+					AND current_state != 'CorruptionIgnored'
+					AND current_state != 'ImportBlocked'
+					AND current_state != 'ManuallyRemoved'
+					THEN 1 END) as active_corruptions,
+				COUNT(CASE
+					WHEN current_state = 'VerificationSuccess'
+					THEN 1 END) as resolved_corruptions,
+				COUNT(CASE
+					WHEN current_state = 'MaxRetriesReached'
+					THEN 1 END) as orphaned_corruptions,
+				COUNT(CASE
+					WHEN (current_state LIKE '%Started'
+					OR current_state LIKE '%Queued'
+					OR current_state LIKE '%Progress'
+					OR current_state = 'SearchCompleted'
+					OR current_state = 'DeletionCompleted'
+					OR current_state = 'FileDetected')
+					AND current_state != 'CorruptionIgnored'
+					THEN 1 END) as in_progress,
+				COUNT(CASE
+					WHEN current_state = 'ImportBlocked'
+					OR current_state = 'ManuallyRemoved'
+					THEN 1 END) as manual_intervention_required
+			FROM corruption_summary
+			WHERE current_state != 'CorruptionIgnored'
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to create dashboard_stats view: %w", err)
+		}
+	} else {
+		// Fallback to old slow VIEW (pre-migration 004)
+		_, err = r.DB.Exec(`
+			CREATE VIEW corruption_status AS
+			SELECT
+				aggregate_id as corruption_id,
+				(SELECT event_type FROM events e2
+				 WHERE e2.aggregate_id = e.aggregate_id
+				 ORDER BY id DESC LIMIT 1) as current_state,
+				(SELECT COUNT(*) FROM events e3
+				 WHERE e3.aggregate_id = e.aggregate_id
+				 AND e3.event_type LIKE '%Failed') as retry_count,
+				(SELECT json_extract(event_data, '$.file_path') FROM events e4
+				 WHERE e4.aggregate_id = e.aggregate_id
+				 AND e4.event_type = 'CorruptionDetected'
+				 LIMIT 1) as file_path,
+				(SELECT json_extract(event_data, '$.path_id') FROM events e7
+				 WHERE e7.aggregate_id = e.aggregate_id
+				 AND e7.event_type = 'CorruptionDetected'
+				 LIMIT 1) as path_id,
+				(SELECT json_extract(event_data, '$.error') FROM events e5
+				 WHERE e5.aggregate_id = e.aggregate_id
+				 ORDER BY id DESC LIMIT 1) as last_error,
+				(SELECT json_extract(event_data, '$.corruption_type') FROM events e6
+				 WHERE e6.aggregate_id = e.aggregate_id
+				 AND e6.event_type = 'CorruptionDetected'
+				 LIMIT 1) as corruption_type,
+				MIN(created_at) as detected_at,
+				MAX(created_at) as last_updated_at
+			FROM events e
+			WHERE aggregate_type = 'corruption'
+			GROUP BY aggregate_id
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to create corruption_status view: %w", err)
+		}
+
+		_, err = r.DB.Exec(`
+			CREATE VIEW dashboard_stats AS
+			SELECT
+				COUNT(DISTINCT CASE
+					WHEN current_state != 'VerificationSuccess'
+					AND current_state != 'MaxRetriesReached'
+					AND current_state != 'CorruptionIgnored'
+					AND current_state != 'ImportBlocked'
+					AND current_state != 'ManuallyRemoved'
+					THEN corruption_id END) as active_corruptions,
+				COUNT(DISTINCT CASE
+					WHEN current_state = 'VerificationSuccess'
+					THEN corruption_id END) as resolved_corruptions,
+				COUNT(DISTINCT CASE
+					WHEN current_state = 'MaxRetriesReached'
+					THEN corruption_id END) as orphaned_corruptions,
+				COUNT(DISTINCT CASE
+					WHEN (current_state LIKE '%Started'
+					OR current_state LIKE '%Queued'
+					OR current_state LIKE '%Progress'
+					OR current_state = 'SearchCompleted'
+					OR current_state = 'DeletionCompleted'
+					OR current_state = 'FileDetected')
+					AND current_state != 'CorruptionIgnored'
+					THEN corruption_id END) as in_progress,
+				COUNT(DISTINCT CASE
+					WHEN current_state = 'ImportBlocked'
+					OR current_state = 'ManuallyRemoved'
+					THEN corruption_id END) as manual_intervention_required
+			FROM corruption_status
+			WHERE current_state != 'CorruptionIgnored'
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to create dashboard_stats view: %w", err)
+		}
 	}
 
 	logger.Debugf("✓ Database views recreated")
@@ -437,9 +563,17 @@ func (r *Repository) runMigrations() error {
 	return nil
 }
 
-// Backup creates a backup of the database file
-// Returns the path to the backup file
+// Backup creates a backup of the database file using VACUUM INTO for atomic, consistent backups.
+// This method is safe to call while the database is in use - it handles locking properly.
+// Returns the path to the backup file.
 func (r *Repository) Backup(dbPath string) (string, error) {
+	// Step 1: Verify source database integrity before backup
+	// This prevents propagating corruption to backups
+	if err := r.checkIntegrity(); err != nil {
+		logger.Errorf("Pre-backup integrity check failed: %v", err)
+		return "", fmt.Errorf("refusing to backup corrupted database: %w", err)
+	}
+
 	// Create backup directory if it doesn't exist
 	backupDir := filepath.Join(filepath.Dir(dbPath), "backups")
 	if err := os.MkdirAll(backupDir, 0700); err != nil {
@@ -450,54 +584,52 @@ func (r *Repository) Backup(dbPath string) (string, error) {
 	timestamp := time.Now().Format("20060102_150405")
 	backupPath := filepath.Join(backupDir, fmt.Sprintf("healarr_%s.db", timestamp))
 
-	// Use SQLite's backup API via a checkpoint and file copy
-	// First, force a WAL checkpoint to ensure all data is in the main database file
-	_, err := r.DB.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	// Step 2: Use VACUUM INTO for atomic backup
+	// VACUUM INTO (SQLite 3.27+) creates a consistent point-in-time backup
+	// that properly handles WAL mode and holds the necessary locks.
+	// It also defragments and optimizes the backup file.
+	_, err := r.DB.Exec(fmt.Sprintf("VACUUM INTO '%s'", backupPath))
 	if err != nil {
-		logger.Debugf("WAL checkpoint failed (might not be in WAL mode): %v", err)
-	}
-
-	// Copy the database file
-	srcFile, err := os.Open(dbPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to open source database: %w", err)
-	}
-	defer func() {
-		if closeErr := srcFile.Close(); closeErr != nil {
-			logger.Warnf("Failed to close source database file: %v", closeErr)
-		}
-	}()
-
-	dstFile, err := os.Create(backupPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to create backup file: %w", err)
-	}
-	// Note: We handle dstFile.Close() explicitly below to catch errors
-
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
-		_ = dstFile.Close()       // Ignore close error since we're already returning an error
-		_ = os.Remove(backupPath) // Clean up partial backup, ignore error
-		return "", fmt.Errorf("failed to copy database: %w", err)
-	}
-
-	// Sync to ensure backup is fully written to disk
-	if err := dstFile.Sync(); err != nil {
-		_ = dstFile.Close()
+		// Clean up any partial backup file
 		_ = os.Remove(backupPath)
-		return "", fmt.Errorf("failed to sync backup file: %w", err)
+		return "", fmt.Errorf("backup failed: %w", err)
 	}
 
-	// Explicitly close dst file and check for errors - this ensures data is flushed
-	if err := dstFile.Close(); err != nil {
+	// Step 3: Verify backup integrity
+	if err := verifyBackupIntegrity(backupPath); err != nil {
+		logger.Errorf("Backup verification failed, removing corrupt backup: %v", err)
 		_ = os.Remove(backupPath)
-		return "", fmt.Errorf("failed to close backup file: %w", err)
+		return "", fmt.Errorf("backup verification failed: %w", err)
 	}
+
+	logger.Infof("✓ Database backup verified: %s", filepath.Base(backupPath))
 
 	// Clean up old backups (keep last 5)
 	r.cleanupOldBackups(backupDir, 5)
 
 	return backupPath, nil
+}
+
+// verifyBackupIntegrity opens the backup file and runs an integrity check
+func verifyBackupIntegrity(backupPath string) error {
+	// Open backup database for verification
+	backupDB, err := sql.Open("sqlite", backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to open backup for verification: %w", err)
+	}
+	defer backupDB.Close()
+
+	// Run quick integrity check
+	var result string
+	err = backupDB.QueryRow("PRAGMA quick_check").Scan(&result)
+	if err != nil {
+		return fmt.Errorf("backup integrity check query failed: %w", err)
+	}
+	if result != "ok" {
+		return fmt.Errorf("backup integrity check failed: %s", result)
+	}
+
+	return nil
 }
 
 // cleanupOldBackups removes old backup files, keeping only the most recent 'keep' files

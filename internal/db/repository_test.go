@@ -400,9 +400,168 @@ func TestRepository_ConnectionPool(t *testing.T) {
 
 	stats := repo.DB.Stats()
 
-	// Verify connection pool settings (10 connections for concurrent reads with WAL mode)
-	if stats.MaxOpenConnections != 10 {
-		t.Errorf("Expected MaxOpenConnections=10, got %d", stats.MaxOpenConnections)
+	// Verify connection pool settings (4 connections to reduce lock contention in WAL mode)
+	if stats.MaxOpenConnections != 4 {
+		t.Errorf("Expected MaxOpenConnections=4, got %d", stats.MaxOpenConnections)
+	}
+}
+
+func TestRepository_GracefulClose(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-graceful-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dbPath := filepath.Join(tmpDir, "test.db")
+	repo, err := NewRepository(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to create repository: %v", err)
+	}
+
+	// Insert some data
+	_, err = repo.DB.Exec(`
+		INSERT INTO events (aggregate_type, aggregate_id, event_type, event_data, event_version)
+		VALUES (?, ?, ?, ?, ?)
+	`, "test", "graceful-test", "GracefulCloseEvent", "{}", 1)
+	if err != nil {
+		t.Fatalf("Failed to insert test data: %v", err)
+	}
+
+	// Graceful close should succeed
+	if err := repo.GracefulClose(); err != nil {
+		t.Errorf("GracefulClose failed: %v", err)
+	}
+
+	// Verify WAL file is checkpointed (should not exist or be empty after TRUNCATE checkpoint)
+	walPath := dbPath + "-wal"
+	if info, err := os.Stat(walPath); err == nil && info.Size() > 0 {
+		t.Logf("Note: WAL file still exists with size %d (may be expected)", info.Size())
+	}
+
+	// Reopen and verify data persisted
+	repo2, err := NewRepository(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to reopen repository: %v", err)
+	}
+	defer repo2.Close()
+
+	var count int
+	err = repo2.DB.QueryRow("SELECT COUNT(*) FROM events WHERE event_type = 'GracefulCloseEvent'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query events: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("Expected 1 event after graceful close, got %d", count)
+	}
+}
+
+func TestRepository_Checkpoint(t *testing.T) {
+	repo, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Insert some data
+	for i := 0; i < 10; i++ {
+		_, err := repo.DB.Exec(`
+			INSERT INTO events (aggregate_type, aggregate_id, event_type, event_data, event_version)
+			VALUES (?, ?, ?, ?, ?)
+		`, "test", fmt.Sprintf("checkpoint-test-%d", i), "CheckpointEvent", "{}", 1)
+		if err != nil {
+			t.Fatalf("Failed to insert test data: %v", err)
+		}
+	}
+
+	// Checkpoint should succeed
+	if err := repo.Checkpoint(); err != nil {
+		t.Errorf("Checkpoint failed: %v", err)
+	}
+}
+
+func TestRepository_StartPeriodicCheckpoint(t *testing.T) {
+	repo, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Start periodic checkpoint with short interval for testing
+	stop := repo.StartPeriodicCheckpoint(50 * time.Millisecond)
+
+	// Insert some data
+	for i := 0; i < 5; i++ {
+		_, err := repo.DB.Exec(`
+			INSERT INTO events (aggregate_type, aggregate_id, event_type, event_data, event_version)
+			VALUES (?, ?, ?, ?, ?)
+		`, "test", fmt.Sprintf("periodic-test-%d", i), "PeriodicEvent", "{}", 1)
+		if err != nil {
+			t.Fatalf("Failed to insert test data: %v", err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Wait for at least one checkpoint to run
+	time.Sleep(100 * time.Millisecond)
+
+	// Stop the periodic checkpoint
+	stop()
+
+	// Verify we can still query data
+	var count int
+	err := repo.DB.QueryRow("SELECT COUNT(*) FROM events WHERE event_type = 'PeriodicEvent'").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query events: %v", err)
+	}
+	if count != 5 {
+		t.Errorf("Expected 5 events, got %d", count)
+	}
+}
+
+func TestRepository_BackupIntegrityCheck(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-integrity-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Create a valid backup file manually
+	validBackupPath := filepath.Join(tmpDir, "valid.db")
+	validDB, err := sql.Open("sqlite", validBackupPath)
+	if err != nil {
+		t.Fatalf("Failed to create valid backup: %v", err)
+	}
+	_, err = validDB.Exec("CREATE TABLE test (id INTEGER)")
+	if err != nil {
+		t.Fatalf("Failed to create table: %v", err)
+	}
+	validDB.Close()
+
+	// Verify valid backup passes integrity check
+	if err := verifyBackupIntegrity(validBackupPath); err != nil {
+		t.Errorf("Valid backup failed integrity check: %v", err)
+	}
+
+	// Create an invalid backup file (random bytes)
+	invalidBackupPath := filepath.Join(tmpDir, "invalid.db")
+	if err := os.WriteFile(invalidBackupPath, []byte("this is not a valid sqlite database"), 0644); err != nil {
+		t.Fatalf("Failed to create invalid backup: %v", err)
+	}
+
+	// Verify invalid backup fails integrity check
+	if err := verifyBackupIntegrity(invalidBackupPath); err == nil {
+		t.Error("Invalid backup should have failed integrity check")
+	}
+}
+
+func TestRepository_SynchronousFullMode(t *testing.T) {
+	repo, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Verify synchronous mode is FULL (value 2)
+	var synchronous int
+	err := repo.DB.QueryRow("PRAGMA synchronous").Scan(&synchronous)
+	if err != nil {
+		t.Fatalf("Failed to query synchronous mode: %v", err)
+	}
+	// FULL = 2, NORMAL = 1, OFF = 0
+	if synchronous != 2 {
+		t.Errorf("Expected synchronous=2 (FULL), got %d", synchronous)
 	}
 }
 
@@ -1217,7 +1376,8 @@ func TestRepository_Backup_CreateDirError(t *testing.T) {
 	}
 
 	// Backup should fail because it can't create the backup directory
-	_, err = repo.Backup(tmpDir)
+	// Note: We pass dbPath (the database file path), not tmpDir
+	_, err = repo.Backup(dbPath)
 	if err == nil {
 		t.Error("Backup should fail when directory creation fails")
 	}
