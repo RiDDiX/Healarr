@@ -272,6 +272,7 @@ type Notifier struct {
 	mu         sync.RWMutex
 	stopChan   chan struct{}
 	reloadChan chan struct{}
+	wg         sync.WaitGroup // Tracks background goroutines for clean shutdown
 }
 
 // NewNotifier creates a new notifier service
@@ -312,15 +313,20 @@ func (n *Notifier) Start() error {
 	}
 
 	// Start background goroutine for config reloading and log cleanup
-	go n.backgroundWorker()
+	n.wg.Add(1)
+	go func() {
+		defer n.wg.Done()
+		n.backgroundWorker()
+	}()
 
 	logger.Infof("Notifier started with %d configurations", len(n.configs))
 	return nil
 }
 
-// Stop stops the notifier
+// Stop stops the notifier and waits for background goroutines to exit
 func (n *Notifier) Stop() {
 	close(n.stopChan)
+	n.wg.Wait()
 }
 
 // SendSystemHealthDegraded sends a notification when system health is degraded
