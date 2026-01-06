@@ -2,24 +2,45 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, Activity, ArrowRight } from 'lucide-react';
-import api, { getAuthStatus } from '../lib/api';
+import type { SetupStatus } from '../lib/api';
+import api, { getAuthStatus, getSetupStatus } from '../lib/api';
 import { useWebSocket } from '../contexts/WebSocketProvider';
+import SetupWizard from '../components/SetupWizard';
 
 const Login = () => {
     const [password, setPassword] = useState('');
     const [isSetup, setIsSetup] = useState(false);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState('');
+    const [showWizard, setShowWizard] = useState(false);
+    const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
     const navigate = useNavigate();
     const { reconnect } = useWebSocket();
 
     useEffect(() => {
         const checkStatus = async () => {
             try {
-                const status = await getAuthStatus();
-                setIsSetup(!status.is_setup);
+                // Check both auth status and setup status
+                const [authStatus, setupStat] = await Promise.all([
+                    getAuthStatus(),
+                    getSetupStatus().catch(() => null), // Don't fail if setup endpoint isn't available
+                ]);
+
+                setSetupStatus(setupStat);
+
+                // Determine if we should show the wizard
+                // Show wizard if: needs_setup is true AND onboarding hasn't been dismissed
+                if (setupStat && setupStat.needs_setup && !setupStat.onboarding_dismissed) {
+                    setShowWizard(true);
+                } else {
+                    // Fall back to old behavior
+                    setIsSetup(!authStatus.is_setup);
+                }
             } catch (err) {
                 console.error('Failed to check auth status:', err);
+            } finally {
+                setLoading(false);
             }
         };
         checkStatus();
@@ -27,14 +48,14 @@ const Login = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setLoading(true);
+        setSubmitting(true);
         setError('');
 
         // Check if there's already a token
         const existingToken = localStorage.getItem('healarr_token');
         if (existingToken) {
             navigate('/');
-            setLoading(false); // Ensure loading is reset if navigated away
+            setSubmitting(false);
             return;
         }
 
@@ -63,9 +84,39 @@ const Login = () => {
                 setError(error.response?.data?.error || 'Login failed');
             }
         } finally {
-            setLoading(false);
+            setSubmitting(false);
         }
     };
+
+    const handleWizardComplete = (token?: string) => {
+        if (token) {
+            localStorage.setItem('healarr_token', token);
+            reconnect();
+        }
+        navigate('/');
+    };
+
+    const handleWizardSkip = () => {
+        setShowWizard(false);
+        // After skipping wizard, check if password is set
+        if (setupStatus && !setupStatus.has_password) {
+            setIsSetup(true);
+        }
+    };
+
+    // Show loading state
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center">
+                <div className="w-8 h-8 border-2 border-green-500/30 border-t-green-500 rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    // Show setup wizard if needed
+    if (showWizard) {
+        return <SetupWizard onComplete={handleWizardComplete} onSkip={handleWizardSkip} />;
+    }
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 flex items-center justify-center p-4">
@@ -122,10 +173,10 @@ const Login = () => {
 
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={submitting}
                             className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold rounded-xl transition-all shadow-lg shadow-green-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                         >
-                            {loading ? (
+                            {submitting ? (
                                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                                 <>

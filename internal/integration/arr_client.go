@@ -1210,6 +1210,32 @@ func (c *HTTPArrClient) GetInstanceByID(id int64) (*ArrInstanceInfo, error) {
 	}, nil
 }
 
+// GetRootFolders implements ArrClient interface - fetches root folders from a *arr instance.
+// Root folders are the configured library paths in Sonarr/Radarr (e.g., /data/media/Movies).
+func (c *HTTPArrClient) GetRootFolders(instanceID int64) ([]RootFolder, error) {
+	instance, err := c.getInstanceByIDInternal(instanceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get instance: %w", err)
+	}
+
+	resp, err := c.doRequest(instance, "GET", "/api/v3/rootfolder", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch root folders: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get root folders: %s", resp.Status)
+	}
+
+	var folders []RootFolder
+	if err := json.NewDecoder(resp.Body).Decode(&folders); err != nil {
+		return nil, fmt.Errorf("failed to decode root folders: %w", err)
+	}
+
+	return folders, nil
+}
+
 // GetQueueForPath implements ArrClient interface - gets queue for a path's instance
 func (c *HTTPArrClient) GetQueueForPath(arrPath string) ([]QueueItemInfo, error) {
 	instance, err := c.getInstanceForPath(arrPath)

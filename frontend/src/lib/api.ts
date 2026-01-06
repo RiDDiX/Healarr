@@ -700,3 +700,64 @@ export const getSystemInfo = async (): Promise<SystemInfo> => {
     const { data } = await api.get<SystemInfo>('/system/info');
     return data;
 };
+
+// --- Setup/Onboarding API ---
+
+export interface SetupStatus {
+    needs_setup: boolean;
+    has_password: boolean;
+    has_api_key: boolean;
+    has_instances: boolean;
+    has_scan_paths: boolean;
+    onboarding_dismissed: boolean;
+}
+
+export const getSetupStatus = async (): Promise<SetupStatus> => {
+    const { data } = await api.get<SetupStatus>('/setup/status');
+    return data;
+};
+
+export const dismissSetup = async (): Promise<{ message: string }> => {
+    const { data } = await api.post<{ message: string }>('/setup/dismiss');
+    return data;
+};
+
+// Import config during setup (public endpoint, no auth required)
+export const importConfigPublic = async (config: Partial<ConfigExport>): Promise<ConfigImportResult> => {
+    const { data } = await api.post<ConfigImportResult>('/setup/import', config);
+    return data;
+};
+
+// Restore database during setup (public endpoint, no auth required)
+export interface RestoreResult {
+    message: string;
+    restart_required: boolean;
+    backup_created: string;
+    note: string;
+}
+
+export const restoreDatabasePublic = async (file: File): Promise<RestoreResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await api.post<RestoreResult>('/setup/restore', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data',
+            'X-Confirm-Restore': 'true',
+        },
+    });
+    return data;
+};
+
+// --- ARR Root Folders API ---
+
+export interface RootFolder {
+    id: number;
+    path: string;
+    free_space: number;
+    total_space: number;
+}
+
+export const getArrRootFolders = async (instanceId: number): Promise<RootFolder[]> => {
+    const { data } = await api.get<RootFolder[]>(`/config/arr/${instanceId}/rootfolders`);
+    return data;
+};

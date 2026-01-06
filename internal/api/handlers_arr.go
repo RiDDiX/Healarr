@@ -175,3 +175,46 @@ func (s *RESTServer) testArrConnection(c *gin.Context) {
 		"message": "Connection successful",
 	})
 }
+
+// getArrRootFolders returns the root folders configured in a *arr instance.
+// These are the library paths (e.g., /data/media/Movies) that can be used as scan paths.
+func (s *RESTServer) getArrRootFolders(c *gin.Context) {
+	idStr := c.Param("id")
+	var instanceID int64
+	if _, err := fmt.Sscanf(idStr, "%d", &instanceID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid instance ID"})
+		return
+	}
+
+	if s.arrClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Arr client not available"})
+		return
+	}
+
+	folders, err := s.arrClient.GetRootFolders(instanceID)
+	if err != nil {
+		logger.Errorf("Failed to get root folders for instance %d: %v", instanceID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get root folders: %v", err)})
+		return
+	}
+
+	// Convert to response format with additional metadata
+	type rootFolderResponse struct {
+		ID         int64  `json:"id"`
+		Path       string `json:"path"`
+		FreeSpace  int64  `json:"free_space"`
+		TotalSpace int64  `json:"total_space"`
+	}
+
+	response := make([]rootFolderResponse, len(folders))
+	for i, folder := range folders {
+		response[i] = rootFolderResponse{
+			ID:         folder.ID,
+			Path:       folder.Path,
+			FreeSpace:  folder.FreeSpace,
+			TotalSpace: folder.TotalSpace,
+		}
+	}
+
+	c.JSON(http.StatusOK, response)
+}

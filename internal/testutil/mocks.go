@@ -189,6 +189,7 @@ type MockArrClient struct {
 	GetAllInstancesFunc                 func() ([]*integration.ArrInstanceInfo, error)
 	GetInstanceByIDFunc                 func(id int64) (*integration.ArrInstanceInfo, error)
 	CheckInstanceHealthFunc             func(instanceID int64) error
+	GetRootFoldersFunc                  func(instanceID int64) ([]integration.RootFolder, error)
 	GetQueueForPathFunc                 func(arrPath string) ([]integration.QueueItemInfo, error)
 	FindQueueItemsByMediaIDForPathFunc  func(arrPath string, mediaID int64) ([]integration.QueueItemInfo, error)
 	GetDownloadStatusForPathFunc        func(arrPath string, downloadID string) (status string, progress float64, errMsg string, err error)
@@ -296,6 +297,14 @@ func (m *MockArrClient) CheckInstanceHealth(instanceID int64) error {
 		return m.CheckInstanceHealthFunc(instanceID)
 	}
 	return nil
+}
+
+func (m *MockArrClient) GetRootFolders(instanceID int64) ([]integration.RootFolder, error) {
+	m.recordCall("GetRootFolders", instanceID)
+	if m.GetRootFoldersFunc != nil {
+		return m.GetRootFoldersFunc(instanceID)
+	}
+	return nil, nil
 }
 
 func (m *MockArrClient) GetQueueForPath(arrPath string) ([]integration.QueueItemInfo, error) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,7 +16,81 @@ import (
 	"github.com/mescon/Healarr/internal/auth"
 	"github.com/mescon/Healarr/internal/crypto"
 	"github.com/mescon/Healarr/internal/eventbus"
+	"github.com/mescon/Healarr/internal/integration"
 )
+
+// mockArrClient is a mock implementation of integration.ArrClient for testing
+type mockArrClient struct {
+	rootFolders      []integration.RootFolder
+	rootFoldersError error
+}
+
+func (m *mockArrClient) FindMediaByPath(path string) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockArrClient) DeleteFile(mediaID int64, path string) (map[string]interface{}, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) GetFilePath(mediaID int64, metadata map[string]interface{}, referencePath string) (string, error) {
+	return "", nil
+}
+
+func (m *mockArrClient) GetAllFilePaths(mediaID int64, metadata map[string]interface{}, referencePath string) ([]string, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) TriggerSearch(mediaID int64, path string, episodeIDs []int64) error {
+	return nil
+}
+
+func (m *mockArrClient) GetAllInstances() ([]*integration.ArrInstanceInfo, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) GetInstanceByID(id int64) (*integration.ArrInstanceInfo, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) CheckInstanceHealth(instanceID int64) error {
+	return nil
+}
+
+func (m *mockArrClient) GetRootFolders(instanceID int64) ([]integration.RootFolder, error) {
+	if m.rootFoldersError != nil {
+		return nil, m.rootFoldersError
+	}
+	return m.rootFolders, nil
+}
+
+func (m *mockArrClient) GetQueueForPath(arrPath string) ([]integration.QueueItemInfo, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) FindQueueItemsByMediaIDForPath(arrPath string, mediaID int64) ([]integration.QueueItemInfo, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) GetDownloadStatusForPath(arrPath string, downloadID string) (status string, progress float64, errMsg string, err error) {
+	return "", 0, "", nil
+}
+
+func (m *mockArrClient) GetRecentHistoryForMediaByPath(arrPath string, mediaID int64, limit int) ([]integration.HistoryItemInfo, error) {
+	return nil, nil
+}
+
+func (m *mockArrClient) RemoveFromQueueByPath(arrPath string, queueID int64, removeFromClient, blocklist bool) error {
+	return nil
+}
+
+func (m *mockArrClient) RefreshMonitoredDownloadsByPath(arrPath string) error {
+	return nil
+}
+
+func (m *mockArrClient) GetMediaDetails(mediaID int64, arrPath string) (*integration.MediaDetails, error) {
+	return nil, nil
+}
 
 // setupArrTestServer creates a test server with arr routes and authentication
 // Returns router, apiKey, and cleanup function that must be called to release resources
@@ -678,4 +753,218 @@ func TestUpdateArrInstance_NotFound(t *testing.T) {
 	// Row not found means RowsAffected == 0, but the code returns success regardless
 	// Let's check what the actual behavior is
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// setupArrTestServerWithClient creates a test server with arr routes including root folders
+// Takes a mock ArrClient for testing the root folders endpoint
+func setupArrTestServerWithClient(t *testing.T, db *sql.DB, arrClient integration.ArrClient) (*gin.Engine, string, func()) {
+	t.Helper()
+
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+
+	eb := eventbus.NewEventBus(db)
+	hub := NewWebSocketHub(eb)
+
+	s := &RESTServer{
+		router:    r,
+		db:        db,
+		eventBus:  eb,
+		hub:       hub,
+		arrClient: arrClient,
+	}
+
+	// Setup API key for authentication
+	apiKey, err := auth.GenerateAPIKey()
+	require.NoError(t, err)
+	encryptedKey, err := crypto.Encrypt(apiKey)
+	require.NoError(t, err)
+	_, err = db.Exec("INSERT INTO settings (key, value) VALUES ('api_key', ?)", encryptedKey)
+	require.NoError(t, err)
+
+	// Register routes with authentication
+	api := r.Group("/api")
+	protected := api.Group("")
+	protected.Use(s.authMiddleware())
+	{
+		protected.GET("/config/arr/:id/rootfolders", s.getArrRootFolders)
+	}
+
+	cleanup := func() {
+		hub.Shutdown()
+		eb.Shutdown()
+	}
+
+	return r, apiKey, cleanup
+}
+
+func TestGetArrRootFolders_Success(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	mockClient := &mockArrClient{
+		rootFolders: []integration.RootFolder{
+			{ID: 1, Path: "/data/media/Movies", FreeSpace: 1000000000, TotalSpace: 2000000000},
+			{ID: 2, Path: "/data/media/TV", FreeSpace: 500000000, TotalSpace: 1000000000},
+		},
+	}
+
+	router, apiKey, serverCleanup := setupArrTestServerWithClient(t, db, mockClient)
+	defer serverCleanup()
+
+	req, _ := http.NewRequest("GET", "/api/config/arr/1/rootfolders", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Len(t, response, 2)
+
+	// Check first folder
+	assert.Equal(t, float64(1), response[0]["id"])
+	assert.Equal(t, "/data/media/Movies", response[0]["path"])
+	assert.Equal(t, float64(1000000000), response[0]["free_space"])
+	assert.Equal(t, float64(2000000000), response[0]["total_space"])
+
+	// Check second folder
+	assert.Equal(t, float64(2), response[1]["id"])
+	assert.Equal(t, "/data/media/TV", response[1]["path"])
+}
+
+func TestGetArrRootFolders_Empty(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	mockClient := &mockArrClient{
+		rootFolders: []integration.RootFolder{},
+	}
+
+	router, apiKey, serverCleanup := setupArrTestServerWithClient(t, db, mockClient)
+	defer serverCleanup()
+
+	req, _ := http.NewRequest("GET", "/api/config/arr/1/rootfolders", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Empty(t, response)
+}
+
+func TestGetArrRootFolders_ClientError(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	mockClient := &mockArrClient{
+		rootFoldersError: errors.New("connection refused"),
+	}
+
+	router, apiKey, serverCleanup := setupArrTestServerWithClient(t, db, mockClient)
+	defer serverCleanup()
+
+	req, _ := http.NewRequest("GET", "/api/config/arr/1/rootfolders", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Contains(t, response["error"], "connection refused")
+}
+
+func TestGetArrRootFolders_InvalidInstanceID(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	mockClient := &mockArrClient{}
+
+	router, apiKey, serverCleanup := setupArrTestServerWithClient(t, db, mockClient)
+	defer serverCleanup()
+
+	req, _ := http.NewRequest("GET", "/api/config/arr/invalid/rootfolders", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Equal(t, "Invalid instance ID", response["error"])
+}
+
+func TestGetArrRootFolders_NoClient(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	// Create server without arrClient
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+
+	eb := eventbus.NewEventBus(db)
+	hub := NewWebSocketHub(eb)
+
+	s := &RESTServer{
+		router:    r,
+		db:        db,
+		eventBus:  eb,
+		hub:       hub,
+		arrClient: nil, // No client
+	}
+
+	// Setup API key
+	apiKey, _ := auth.GenerateAPIKey()
+	encryptedKey, _ := crypto.Encrypt(apiKey)
+	db.Exec("INSERT INTO settings (key, value) VALUES ('api_key', ?)", encryptedKey)
+
+	api := r.Group("/api")
+	protected := api.Group("")
+	protected.Use(s.authMiddleware())
+	protected.GET("/config/arr/:id/rootfolders", s.getArrRootFolders)
+
+	defer func() {
+		hub.Shutdown()
+		eb.Shutdown()
+	}()
+
+	req, _ := http.NewRequest("GET", "/api/config/arr/1/rootfolders", nil)
+	req.Header.Set("X-API-Key", apiKey)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var response map[string]interface{}
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	assert.NoError(t, err)
+	assert.Equal(t, "Arr client not available", response["error"])
+}
+
+func TestGetArrRootFolders_Unauthorized(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	mockClient := &mockArrClient{}
+
+	router, _, serverCleanup := setupArrTestServerWithClient(t, db, mockClient)
+	defer serverCleanup()
+
+	req, _ := http.NewRequest("GET", "/api/config/arr/1/rootfolders", nil)
+	// No API key
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

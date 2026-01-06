@@ -9,6 +9,15 @@ type ArrInstanceInfo struct {
 	APIKey string
 }
 
+// RootFolder represents a configured root folder in a *arr instance.
+// Root folders are the base library paths where media is stored.
+type RootFolder struct {
+	ID         int64  `json:"id"`
+	Path       string `json:"path"`
+	FreeSpace  int64  `json:"freeSpace"`
+	TotalSpace int64  `json:"totalSpace"`
+}
+
 // ArrClient defines the interface for interacting with Sonarr/Radarr
 type ArrClient interface {
 	// Media operations
@@ -24,6 +33,9 @@ type ArrClient interface {
 	GetAllInstances() ([]*ArrInstanceInfo, error)
 	GetInstanceByID(id int64) (*ArrInstanceInfo, error)
 	CheckInstanceHealth(instanceID int64) error
+
+	// Root folders - library paths configured in *arr instances
+	GetRootFolders(instanceID int64) ([]RootFolder, error)
 
 	// Queue monitoring - track active downloads
 	GetQueueForPath(arrPath string) ([]QueueItemInfo, error)

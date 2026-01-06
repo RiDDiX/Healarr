@@ -69,6 +69,10 @@ func (m *mockHealthArrClient) CheckInstanceHealth(_ int64) error {
 	return nil
 }
 
+func (m *mockHealthArrClient) GetRootFolders(_ int64) ([]integration.RootFolder, error) {
+	return nil, nil
+}
+
 // Queue monitoring
 func (m *mockHealthArrClient) GetQueueForPath(_ string) ([]integration.QueueItemInfo, error) {
 	if m.queueErr != nil {

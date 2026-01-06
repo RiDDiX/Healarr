@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.20] - 2026-01-06
 
 ### Added
+- **First-time Setup Wizard**: Complete onboarding experience for new users
+  - Multi-step wizard with animated transitions (Welcome → Security → *arr Instance → Scan Path → Complete)
+  - Three setup modes: Fresh Start, Import Configuration, or Restore Database Backup
+  - Connection testing for *arr instances with real-time feedback
+  - Auto-detection of root folders from connected *arr instances
+  - Skip option for power users who prefer manual configuration
 - **Onboarding API endpoints**: Backend support for first-time setup wizard
   - `GET /api/setup/status` - Returns setup state (needs_setup, has_password, has_instances, etc.)
   - `POST /api/setup/dismiss` - Allows power users to skip the onboarding wizard
@@ -18,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Creates pre-restore backup automatically
   - Stages restore as `.pending` file (restart applies changes)
   - Requires `X-Confirm-Restore: true` header for safety
+- **Root folder fetching**: New `GET /api/config/arr/:id/rootfolders` endpoint
+  - Fetches configured root folders (library paths) from *arr instances
+  - Returns path, free space, and total space for each root folder
+  - Enables scan path configuration using paths already configured in Sonarr/Radarr
 
 ### Fixed
 - **Null pointer in config import**: Added nil check for pathMapper before calling Reload()

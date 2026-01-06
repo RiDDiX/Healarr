@@ -286,7 +286,7 @@ func main() {
 
 	// Start API Server
 	logger.Infof("Initializing REST API and WebSocket server...")
-	apiServer := api.NewRESTServer(repo.DB, eb, scannerService, pathMapper, schedulerService, notifierService, metricsService)
+	apiServer := api.NewRESTServer(repo.DB, eb, scannerService, pathMapper, arrClient, schedulerService, notifierService, metricsService)
 	go func() {
 		addr := ":" + cfg.Port
 		if err := apiServer.Start(addr); err != nil && !errors.Is(err, http.ErrServerClosed) {

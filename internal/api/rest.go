@@ -35,6 +35,7 @@ type RESTServer struct {
 	eventBus    *eventbus.EventBus
 	scanner     services.Scanner
 	pathMapper  integration.PathMapper
+	arrClient   integration.ArrClient
 	scheduler   services.Scheduler
 	notifier    *notifier.Notifier
 	metrics     *metrics.MetricsService
@@ -43,7 +44,7 @@ type RESTServer struct {
 	toolChecker *integration.ToolChecker
 }
 
-func NewRESTServer(db *sql.DB, eb *eventbus.EventBus, scanner services.Scanner, pm integration.PathMapper, scheduler services.Scheduler, n *notifier.Notifier, m *metrics.MetricsService) *RESTServer {
+func NewRESTServer(db *sql.DB, eb *eventbus.EventBus, scanner services.Scanner, pm integration.PathMapper, arrClient integration.ArrClient, scheduler services.Scheduler, n *notifier.Notifier, m *metrics.MetricsService) *RESTServer {
 	// Set Gin to release mode for production (suppresses debug warnings)
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -121,6 +122,7 @@ func NewRESTServer(db *sql.DB, eb *eventbus.EventBus, scanner services.Scanner, 
 		eventBus:    eb,
 		scanner:     scanner,
 		pathMapper:  pm,
+		arrClient:   arrClient,
 		scheduler:   scheduler,
 		notifier:    n,
 		metrics:     m,
@@ -230,6 +232,7 @@ func (s *RESTServer) setupRoutes() {
 			protected.POST("/config/arr/test", s.testArrConnection)
 			protected.PUT("/config/arr/:id", s.updateArrInstance)
 			protected.DELETE("/config/arr/:id", s.deleteArrInstance)
+			protected.GET("/config/arr/:id/rootfolders", s.getArrRootFolders)
 			protected.GET("/config/paths", s.getScanPaths)
 			protected.POST("/config/paths", s.createScanPath)
 			protected.PUT("/config/paths/:id", s.updateScanPath)
