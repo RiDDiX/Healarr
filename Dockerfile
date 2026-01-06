@@ -45,7 +45,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # -----------------------------------------------------------------------------
 # Stage 3: Production Runtime
 # -----------------------------------------------------------------------------
-FROM alpine:3.20
+FROM alpine:3.23
 
 # Install runtime dependencies
 # - ffmpeg: for video health checking (ffprobe)
