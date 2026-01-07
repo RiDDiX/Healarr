@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -687,4 +688,167 @@ func TestHandleHealth_ArrQueryError(t *testing.T) {
 	if arrInstances["total"] != float64(0) {
 		t.Errorf("Expected 0 total arr instances (query error), got %v", arrInstances["total"])
 	}
+}
+
+// =============================================================================
+// Unit tests for helper functions
+// =============================================================================
+
+func TestFormatUptime(t *testing.T) {
+	tests := []struct {
+		name     string
+		uptime   time.Duration
+		expected string
+	}{
+		{
+			name:     "zero minutes",
+			uptime:   0,
+			expected: "0m",
+		},
+		{
+			name:     "only minutes",
+			uptime:   45 * time.Minute,
+			expected: "45m",
+		},
+		{
+			name:     "hours and minutes",
+			uptime:   3*time.Hour + 25*time.Minute,
+			expected: "3h 25m",
+		},
+		{
+			name:     "days hours minutes",
+			uptime:   2*24*time.Hour + 5*time.Hour + 30*time.Minute,
+			expected: "2d 5h 30m",
+		},
+		{
+			name:     "exactly one day",
+			uptime:   24 * time.Hour,
+			expected: "1d 0h 0m",
+		},
+		{
+			name:     "exactly one hour",
+			uptime:   1 * time.Hour,
+			expected: "1h 0m",
+		},
+		{
+			name:     "large uptime",
+			uptime:   100*24*time.Hour + 23*time.Hour + 59*time.Minute,
+			expected: "100d 23h 59m",
+		},
+		{
+			name:     "seconds ignored",
+			uptime:   45*time.Minute + 30*time.Second,
+			expected: "45m",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := formatUptime(tt.uptime)
+			if result != tt.expected {
+				t.Errorf("formatUptime(%v) = %q, want %q", tt.uptime, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestCheckDatabaseHealth(t *testing.T) {
+	t.Run("healthy database returns connected status", func(t *testing.T) {
+		db, dbPath, cleanup := setupTestDBForHealth(t)
+		defer cleanup()
+
+		gin.SetMode(gin.TestMode)
+		eb := eventbus.NewEventBus(db)
+		defer eb.Shutdown()
+
+		s := &RESTServer{
+			db: db,
+		}
+
+		config.SetForTesting(&config.Config{
+			DatabasePath: dbPath,
+		})
+
+		ctx := context.Background()
+		dbHealth, healthy := s.checkDatabaseHealth(ctx)
+
+		if !healthy {
+			t.Error("Expected healthy=true for working database")
+		}
+
+		if dbHealth["status"] != "connected" {
+			t.Errorf("Expected status 'connected', got %v", dbHealth["status"])
+		}
+
+		// Should have size_bytes since database file exists
+		if dbHealth["size_bytes"] == nil {
+			t.Error("Expected size_bytes to be present")
+		}
+	})
+
+	t.Run("closed database returns error status", func(t *testing.T) {
+		db, dbPath, cleanup := setupTestDBForHealth(t)
+
+		gin.SetMode(gin.TestMode)
+
+		s := &RESTServer{
+			db: db,
+		}
+
+		config.SetForTesting(&config.Config{
+			DatabasePath: dbPath,
+		})
+
+		// Close the database to simulate connection error
+		db.Close()
+		cleanup()
+
+		ctx := context.Background()
+		dbHealth, healthy := s.checkDatabaseHealth(ctx)
+
+		if healthy {
+			t.Error("Expected healthy=false for closed database")
+		}
+
+		if dbHealth["status"] != "error" {
+			t.Errorf("Expected status 'error', got %v", dbHealth["status"])
+		}
+
+		if dbHealth["error"] == nil {
+			t.Error("Expected error message to be present")
+		}
+	})
+
+	t.Run("missing database file omits size_bytes", func(t *testing.T) {
+		db, _, cleanup := setupTestDBForHealth(t)
+		defer cleanup()
+
+		gin.SetMode(gin.TestMode)
+
+		s := &RESTServer{
+			db: db,
+		}
+
+		// Set database path to non-existent file
+		config.SetForTesting(&config.Config{
+			DatabasePath: "/nonexistent/path/test.db",
+		})
+
+		ctx := context.Background()
+		dbHealth, healthy := s.checkDatabaseHealth(ctx)
+
+		// Should still be healthy (ping works)
+		if !healthy {
+			t.Error("Expected healthy=true (ping still works)")
+		}
+
+		if dbHealth["status"] != "connected" {
+			t.Errorf("Expected status 'connected', got %v", dbHealth["status"])
+		}
+
+		// size_bytes should be omitted since file doesn't exist at that path
+		if dbHealth["size_bytes"] != nil {
+			t.Error("Expected size_bytes to be omitted for non-existent path")
+		}
+	})
 }
