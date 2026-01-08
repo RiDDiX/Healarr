@@ -1925,3 +1925,62 @@ func TestEnrichVerificationEventData(t *testing.T) {
 		}
 	})
 }
+
+// =============================================================================
+// Polling progress helper tests
+// =============================================================================
+
+func TestVerifierService_ShouldLogPollingProgress(t *testing.T) {
+	v := &VerifierService{}
+
+	tests := []struct {
+		name     string
+		attempt  int
+		interval time.Duration
+		want     bool
+	}{
+		{"first attempt", 0, time.Minute, false},
+		{"attempt 5 short interval", 5, time.Minute, false},
+		{"attempt 10 short interval", 10, time.Minute, true},
+		{"attempt 20 short interval", 20, time.Minute, true},
+		{"attempt 5 long interval (1h)", 5, time.Hour, true},
+		{"attempt 1 long interval (2h)", 1, 2 * time.Hour, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := v.shouldLogPollingProgress(tt.attempt, tt.interval); got != tt.want {
+				t.Errorf("shouldLogPollingProgress(%d, %v) = %v, want %v", tt.attempt, tt.interval, got, tt.want)
+			}
+		})
+	}
+}
+
+// =============================================================================
+// logFilesDetected tests
+// =============================================================================
+
+func TestVerifierService_LogFilesDetected(t *testing.T) {
+	v := &VerifierService{}
+
+	// These tests verify the function doesn't panic with various inputs
+	// The function just logs, so we verify it handles edge cases gracefully
+	t.Run("logs single file detected", func(t *testing.T) {
+		// Should not panic
+		v.logFilesDetected("corruption-123", 5, []string{"/media/show/episode.mkv"})
+	})
+
+	t.Run("logs multiple files detected", func(t *testing.T) {
+		// Should not panic
+		v.logFilesDetected("corruption-456", 3, []string{
+			"/media/show/episode1.mkv",
+			"/media/show/episode2.mkv",
+			"/media/show/episode3.mkv",
+		})
+	})
+
+	t.Run("handles empty path list", func(t *testing.T) {
+		// Should not panic even with empty list
+		v.logFilesDetected("corruption-789", 1, []string{})
+	})
+}

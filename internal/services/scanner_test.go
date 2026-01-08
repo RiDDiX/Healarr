@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -3599,6 +3600,114 @@ func TestScannerService_HandleWalkError(t *testing.T) {
 		err := scanner.handleWalkError("/some/path", nil)
 		if err != nil {
 			t.Errorf("Expected nil for nil error, got %v", err)
+		}
+	})
+}
+
+// =============================================================================
+// Path accessibility helper tests
+// =============================================================================
+
+func TestScannerService_IsMountError(t *testing.T) {
+	scanner := &ScannerService{}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"stale file handle", fmt.Errorf("stale file handle"), true},
+		{"STALE FILE HANDLE (uppercase)", fmt.Errorf("STALE FILE HANDLE"), true},
+		{"transport endpoint not connected", fmt.Errorf("transport endpoint is not connected"), true},
+		{"no such device", fmt.Errorf("no such device or address"), true},
+		{"regular error", fmt.Errorf("file not found"), false},
+		{"permission error", fmt.Errorf("permission denied"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := scanner.isMountError(tt.err); got != tt.want {
+				t.Errorf("isMountError(%q) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestScannerService_ClassifyStatError(t *testing.T) {
+	scanner := &ScannerService{}
+
+	tests := []struct {
+		name        string
+		err         error
+		wantContain string
+	}{
+		{"not exist error", os.ErrNotExist, "does not exist"},
+		{"permission error", os.ErrPermission, "permission denied"},
+		{"stale mount error", fmt.Errorf("stale file handle"), "mount appears offline"},
+		{"transport error", fmt.Errorf("transport endpoint is not connected"), "mount appears offline"},
+		{"generic error", fmt.Errorf("some other error"), "cannot access path"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := scanner.classifyStatError("/test/path", tt.err)
+			if got == nil {
+				t.Errorf("classifyStatError() returned nil, want error containing %q", tt.wantContain)
+				return
+			}
+			if !strings.Contains(got.Error(), tt.wantContain) {
+				t.Errorf("classifyStatError() = %q, want to contain %q", got.Error(), tt.wantContain)
+			}
+		})
+	}
+}
+
+func TestScannerService_TestFileAccess(t *testing.T) {
+	scanner := &ScannerService{}
+
+	t.Run("returns nil for empty entries", func(t *testing.T) {
+		err := scanner.testFileAccess("/tmp", []os.DirEntry{})
+		if err != nil {
+			t.Errorf("testFileAccess() with empty entries = %v, want nil", err)
+		}
+	})
+
+	t.Run("returns nil when file can be accessed", func(t *testing.T) {
+		// Create a temp directory with a file
+		tmpDir := t.TempDir()
+		testFile := filepath.Join(tmpDir, "test.txt")
+		if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil {
+			t.Fatalf("Failed to create test file: %v", err)
+		}
+
+		entries, err := os.ReadDir(tmpDir)
+		if err != nil {
+			t.Fatalf("Failed to read temp dir: %v", err)
+		}
+
+		err = scanner.testFileAccess(tmpDir, entries)
+		if err != nil {
+			t.Errorf("testFileAccess() with accessible file = %v, want nil", err)
+		}
+	})
+
+	t.Run("skips directories", func(t *testing.T) {
+		// Create temp directory with only a subdirectory (no files)
+		tmpDir := t.TempDir()
+		subDir := filepath.Join(tmpDir, "subdir")
+		if err := os.Mkdir(subDir, 0755); err != nil {
+			t.Fatalf("Failed to create subdir: %v", err)
+		}
+
+		entries, err := os.ReadDir(tmpDir)
+		if err != nil {
+			t.Fatalf("Failed to read temp dir: %v", err)
+		}
+
+		// Should return nil since we skip directories
+		err = scanner.testFileAccess(tmpDir, entries)
+		if err != nil {
+			t.Errorf("testFileAccess() with only directories = %v, want nil", err)
 		}
 	})
 }
