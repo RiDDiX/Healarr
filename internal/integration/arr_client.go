@@ -436,6 +436,7 @@ func (c *HTTPArrClient) tryParseMedia(instance *ArrInstance, path string) (int64
 
 	var result ParseResult
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		logger.Debugf("Failed to decode parse response from %s: %v", instance.Type, err)
 		return 0, false
 	}
 
@@ -593,6 +594,7 @@ func (c *HTTPArrClient) collectEpisodeMetadata(instance *ArrInstance, mediaID, f
 	}
 	var episodes []Episode
 	if err := json.NewDecoder(epResp.Body).Decode(&episodes); err != nil {
+		logger.Debugf("Failed to decode episodes for series %d: %v", mediaID, err)
 		return nil
 	}
 
@@ -1542,6 +1544,7 @@ func (c *HTTPArrClient) getMovieDetails(instance *ArrInstance, movieID int64) (*
 		Year  int    `json:"year"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&movie); err != nil {
+		logger.Debugf("Failed to decode movie details for ID %d: %v", movieID, err)
 		return nil, nil
 	}
 
@@ -1575,6 +1578,7 @@ func (c *HTTPArrClient) getSeriesDetails(instance *ArrInstance, seriesID int64) 
 		Year  int    `json:"year"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&series); err != nil {
+		logger.Debugf("Failed to decode series details for ID %d: %v", seriesID, err)
 		return nil, nil
 	}
 
@@ -1622,6 +1626,7 @@ func (c *HTTPArrClient) GetEpisodeDetails(episodeID int64, arrPath string) (*Med
 		} `json:"series"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&episode); err != nil {
+		logger.Debugf("Failed to decode episode details for ID %d: %v", episodeID, err)
 		return nil, nil
 	}
 
