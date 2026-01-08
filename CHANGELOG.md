@@ -7,28 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.23] - 2026-01-09
 
-### Changed
-- **Code Quality**: Reduced cognitive complexity in 9 functions flagged by SonarCloud
-  - `sendGenericWebhook` (36→14): Extracted webhook data helpers and key-value parsing
-  - `runMigrations` (35→12): Extracted migration table, version, and file helpers
-  - `runMediaInfo` (25→12): Extracted arg building, timeout handling, and output validation
-  - `RunMaintenance` (24→8): Extracted prune operation and maintenance command helpers
-  - `authMiddleware` (18→12): Extracted token extraction and verification helpers
-  - `getInstanceForPath` (18→11): Extracted path matching and normalization helpers
-  - `pollForFileWithBackoff` (17→11): Extracted logging progress and file detection helpers
-  - `verifyPathAccessible` (17→11): Extracted stat error classification and file access testing
-  - `sendNotification` (16→11): Extracted notification event publishing helper
-
-### Added
-- **Test Coverage**: Comprehensive tests for all extracted helper functions
-  - `TestRESTServer_VerifyAPIToken` and `TestRESTServer_AuthMiddleware` for auth helpers
-  - `TestBuildMediaInfoArgs`, `TestValidateMediaInfoOutput`, `TestHasValidMediaTrack` for health checker
-  - `TestIsValidPathMatch`, `TestNormalizedPathLength` for arr client path matching
-  - `TestParseMigrationVersion`, `TestGetMigrationFiles` for migration helpers
-  - `TestScannerService_IsMountError`, `TestScannerService_ClassifyStatError`, `TestScannerService_TestFileAccess` for scanner
-  - `TestVerifierService_ShouldLogPollingProgress`, `TestVerifierService_LogFilesDetected` for verifier
-  - `TestEnsureHTTPScheme`, `TestParseKeyValuePairs`, `TestExtractWebhookData`, `TestGetFileName`, `TestNotifier_PublishNotificationEvent` for notifier
-  - New code coverage: 85.65% (exceeds 80% SonarCloud threshold)
+### Improved
+- **Reliability**: Major internal code refactoring for improved stability
+  - Simplified complex code paths in authentication, notifications, database maintenance, and file scanning
+  - Easier to debug and fix issues faster in future releases
+- **Test Coverage**: Expanded automated testing to 85% coverage
+  - More bugs caught before they reach users
+  - Better confidence in updates and new features
 
 ## [1.1.22] - 2026-01-08
 
