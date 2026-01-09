@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.25] - 2026-01-09
+
+### Added
+- **Mobile-Friendly Tables**: All data tables now adapt to mobile screens
+  - Tables collapse into expandable cards on phones and tablets
+  - Tap to expand and see all details
+  - Works on Dashboard, Corruptions, Scan Details, and Configuration pages
+- **Skipped & Inaccessible Files**: Scan details now show why files weren't checked
+  - New stat cards for Skipped and Inaccessible file counts
+  - Filter by status to see exactly which files had issues
+  - Helps identify permission problems or unsupported file types
+
+### Improved
+- **Setup Experience**: Better feedback during configuration
+  - Progress indicators when testing connections
+  - Clearer error messages when things go wrong
+  - Path validation shows file counts before saving
+- **Error Handling**: More helpful messages throughout the app
+  - Network errors show retry options
+  - Server errors explain what went wrong
+  - Validation errors highlight exactly what to fix
+- **Performance**: Faster loading on large libraries
+  - Scan details load with fewer database queries
+  - Path validation limits file scanning to prevent timeouts
+
 ## [1.1.24] - 2026-01-09
 
 ### Improved
