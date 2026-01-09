@@ -342,10 +342,17 @@ if (navigator.clipboard && window.isSecureContext) {
 4. **Scheduled reports**: Email summaries
 5. **Multiple user accounts**: With role-based access
 
-### Already Implemented (v1.0.0 - v1.1.10)
+### Already Implemented (v1.0.0 - v1.1.24)
 
 1. ✅ **Prometheus metrics** - Added in v1.1.0 at `/metrics` endpoint
 2. ✅ **Telegram, email, and more** - Discord, Slack, Telegram, Pushover, Gotify, ntfy, Email (SMTP)
 3. ✅ **Health check alternatives** - ffprobe, MediaInfo, and HandBrake supported
 4. ✅ **Startup recovery** - Auto-fixes items Healarr lost track of (v1.1.10)
 5. ✅ **Periodic *arr sync** - Every 30 minutes to catch missed updates (v1.1.10)
+6. ✅ **Rich media information** - Friendly titles, *arr icons, quality badges (v1.1.11)
+7. ✅ **Live scan progress** - Real-time file-by-file updates (v1.1.16)
+8. ✅ **Custom tool paths** - Configure detection tool locations (v1.1.18)
+9. ✅ **First-time setup wizard** - Guided onboarding for new users (v1.1.20)
+10. ✅ **Database restore UI** - Restore backups directly in the UI (v1.1.20)
+11. ✅ **Security hardening** - URL validation, path traversal protection (v1.1.21)
+12. ✅ **85% test coverage** - Comprehensive automated testing (v1.1.23)

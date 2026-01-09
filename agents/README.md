@@ -9,7 +9,7 @@ This documentation is designed for AI agents (LLMs) to understand the Healarr co
 | Aspect | Details |
 |--------|---------|
 | **Name** | Healarr (Health Evaluation And Library Auto-Recovery for *aRR) |
-| **Version** | v1.1.0 |
+| **Version** | v1.1.24 |
 | **License** | GPLv3 |
 | **Repository** | `github.com/mescon/Healarr` |
 | **Backend** | Go 1.25+ with Gin v1.11.0 framework |
@@ -21,13 +21,15 @@ This documentation is designed for AI agents (LLMs) to understand the Healarr co
 
 | File | Purpose |
 |------|---------|
-| [INDEX.md](INDEX.md) | This file - start here |
+| [README.md](README.md) | This file - start here |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | System architecture, event flow, service interactions |
 | [BACKEND.md](BACKEND.md) | Go backend structure, services, integrations |
 | [FRONTEND.md](FRONTEND.md) | React frontend structure, components, state management |
 | [DATABASE.md](DATABASE.md) | Schema, migrations, data flow |
 | [API.md](API.md) | REST endpoints, WebSocket events, authentication |
 | [DECISIONS.md](DECISIONS.md) | Design decisions and rationale |
+| [GOALS.md](GOALS.md) | Project goals, philosophy, quality standards |
+| [CLAUDE_EXPERT.md](CLAUDE_EXPERT.md) | Comprehensive system prompt for Claude Code |
 
 ## What is Healarr?
 
@@ -49,19 +51,41 @@ Media files on storage can become corrupted due to:
 
 Healarr automates the detection and recovery process that would otherwise require manual intervention.
 
-## Key Features (v1.0.0)
+## Key Features (v1.1.x)
 
+### Detection & Scanning
+- **Multi-method detection**: ffprobe, MediaInfo, or HandBrake for corruption detection
+- **Detection modes**: Quick (header check) or Thorough (full decode) scanning
+- **Custom tool paths**: Configure ffprobe/mediainfo/handbrake locations
+- **Tool detection**: Startup checks for required tools with version display
+- **Live scan progress**: Real-time file-by-file progress updates
 - **Per-path configuration**: Different settings per scan path (auto-remediate, dry-run, max retries)
-- **Detection modes**: Quick (header check) or Thorough (full decode) scanning options
-- **Dry-run mode**: Test scans without triggering remediation
-- **Rate limiting**: Token bucket rate limiting (5 req/s, burst 10) on *arr API calls
-- **Queue monitoring**: Uses *arr queue/history APIs for accurate verification
+
+### Recovery & Verification
+- **Automatic remediation**: Trigger *arr to delete and re-download corrupt files
+- **Queue-based verification**: Uses *arr queue/history APIs for accurate tracking
+- **Startup recovery**: Auto-fixes items lost track of during restarts (v1.1.10+)
+- **Periodic sync**: Every 30 minutes syncs with *arr to catch missed updates
+
+### User Experience
+- **First-time setup wizard**: Guided onboarding for new users (v1.1.20+)
+- **Rich media information**: Shows friendly titles like "Colony S01E08" instead of paths
+- **Remediation journey**: Visual workflow showing download progress and quality
+- **Dark/light themes**: System preference or manual selection
+
+### Operations
 - **Bulk scan controls**: Pause/resume/cancel all active scans
+- **Scheduled scans**: Cron-based scheduling per path
 - **Config import/export**: Backup and restore configuration as JSON
-- **Database backup**: Download encrypted SQLite backup
-- **Real-time updates**: WebSocket for live scan progress and events
-- **Accessibility error handling**: Distinguishes transient errors (mount lost, permission denied) from true corruption
-- **Protected UI**: All pages require authentication; login page for password setup
+- **Database backup/restore**: Download and restore SQLite backups
+- **Real-time updates**: WebSocket for live events
+- **Notifications**: Discord, Slack, Telegram, Pushover, Gotify, ntfy, Email
+
+### Security & Reliability
+- **Accessibility error handling**: Distinguishes mount failures from true corruption
+- **Rate limiting**: Token bucket (5 req/s, burst 10) protects *arr instances
+- **Input validation**: URL validation, path traversal prevention
+- **Protected UI**: Password authentication with bcrypt
 
 ## Key Concepts
 

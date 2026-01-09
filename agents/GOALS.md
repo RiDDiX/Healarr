@@ -4,8 +4,8 @@
 
 Healarr (**H**ealth **E**valuation **A**nd **L**ibrary **A**uto-**R**ecovery for ***aRR**) solves the silent data corruption problem in self-hosted media libraries by providing automated detection, remediation, and verification integrated with the *arr ecosystem.
 
-**Current Version**: v1.1.10
-**Status**: Production-ready, feature-complete for v1.x scope
+**Current Version**: v1.1.24
+**Status**: Production-ready, actively maintained
 
 ---
 
@@ -150,33 +150,49 @@ Multi-stage verification ensures accurate detection of successful remediation:
 
 ---
 
-## Current Capabilities (v1.0.x)
+## Current Capabilities (v1.1.x)
 
 ### Core Features
 - Multi-method detection (ffprobe, MediaInfo, HandBrake)
+- Custom tool paths via environment variables or `/config/tools/`
+- Tool detection with version display on startup
 - Automatic remediation via *arr APIs
 - Queue-based verification with progress tracking
 - Per-path configuration (auto-remediate, dry-run, max-retries)
 - Scheduled and on-demand scanning
 - Webhook integration for immediate post-download scanning
+- Startup recovery - auto-fixes items lost during restarts
+- Periodic *arr sync - every 30 minutes catches missed updates
 
 ### User Interface
+- First-time setup wizard for guided onboarding
 - Real-time dashboard with stats and charts
+- Live scan progress with file-by-file updates
+- Rich media information (friendly titles, *arr icons, quality badges)
 - Corruption lifecycle visualization ("Remediation Journey")
 - Scan management (pause, resume, cancel - individual and bulk)
 - Configuration export/import for backup/migration
+- Database restore from backup UI
 - Built-in help and troubleshooting documentation
 
 ### Notifications
 - Discord, Slack, custom webhooks
 - Telegram, Pushover, Gotify, ntfy, Email (SMTP)
+- Matrix support with provider icons
 - Per-notification event filtering
 
 ### Operations
 - Automatic database maintenance (daily at 3 AM)
+- Database backup with integrity verification (VACUUM INTO)
 - Database backup (on startup, every 6 hours)
 - Log rotation (100MB max, 7 days retention)
 - Configurable data retention (default: 90 days)
+
+### Security (v1.1.21+)
+- URL validation for *arr instances (prevents SSRF)
+- Directory browser locked to allowed paths
+- Path traversal prevention in all file operations
+- Open redirect protection in frontend
 
 ---
 
@@ -288,7 +304,14 @@ Healarr succeeds when users can:
 | v1.0 | Queue-based verification, Whisparr v2/v3 support |
 | v1.0.3 | Stability improvements, accessibility error separation |
 | v1.1.0 | Circuit breaker, clock abstraction, comprehensive test coverage |
-| v1.1.10 | **Current** - Startup recovery, periodic *arr sync, stale item auto-fix |
+| v1.1.10 | Startup recovery, periodic *arr sync, stale item auto-fix |
+| v1.1.14 | Health monitor fixes, provider icons, stuck remediation state |
+| v1.1.16 | Live scan progress, running scan count badges |
+| v1.1.18 | Custom tool paths, Alpine 3.23, database reliability |
+| v1.1.20 | First-time setup wizard, database restore UI |
+| v1.1.21 | Security hardening (URL validation, path traversal protection) |
+| v1.1.23 | Major refactoring, 85% test coverage |
+| v1.1.24 | **Current** - CI/CD pipeline improvements |
 
 ---
 
