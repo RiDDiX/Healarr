@@ -83,6 +83,8 @@ export interface ScanDetails {
     completed_at: string;
     healthy_files: number;
     corrupt_files: number;
+    skipped_files: number;
+    inaccessible_files: number;
 }
 
 export const getScanDetails = async (scanId: number): Promise<ScanDetails> => {
@@ -93,7 +95,7 @@ export const getScanDetails = async (scanId: number): Promise<ScanDetails> => {
 export interface ScanFile {
     id: number;
     file_path: string;
-    status: 'healthy' | 'corrupt' | 'error';
+    status: 'healthy' | 'corrupt' | 'error' | 'skipped' | 'inaccessible';
     corruption_type: string;
     error_details: string;
     file_size: number;
@@ -265,6 +267,19 @@ export const updateScanPath = async (id: number, path: Omit<ScanPath, 'id'>) => 
 
 export const deleteScanPath = async (id: number) => {
     await api.delete(`/config/paths/${id}`);
+};
+
+// Path validation response
+export interface PathValidation {
+    accessible: boolean;
+    file_count: number;
+    sample_files: string[];
+    error: string | null;
+}
+
+export const validateScanPath = async (id: number): Promise<PathValidation> => {
+    const response = await api.get(`/config/paths/${id}/validate`);
+    return response.data;
 };
 
 // --- Directory Browser API ---

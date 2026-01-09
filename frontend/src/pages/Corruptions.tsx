@@ -237,8 +237,13 @@ const Corruptions = () => {
                             {manualInterventionCount} item{manualInterventionCount > 1 ? 's' : ''} require{manualInterventionCount === 1 ? 's' : ''} manual intervention
                         </h3>
                         <p className="text-sm text-purple-500/80 dark:text-purple-400/80 mt-1">
-                            These corruptions could not be automatically remediated and need attention in Sonarr/Radarr.
+                            These items are blocked in your *arr application. To resolve:
                         </p>
+                        <ol className="text-sm text-purple-500/80 dark:text-purple-400/80 mt-2 ml-4 list-decimal space-y-1">
+                            <li>Open your *arr app and check <span className="font-medium">Activity → Queue</span></li>
+                            <li>Look for blocked imports, failed downloads, or manually removed items</li>
+                            <li>Resolve the issue in *arr, then click <span className="font-medium">Retry</span> here</li>
+                        </ol>
                     </div>
                     <button
                         onClick={() => handleStatusFilterChange('manual_intervention')}
@@ -253,6 +258,21 @@ const Corruptions = () => {
                 isLoading={isLoading}
                 data={data?.data || []}
                 onRowClick={(row) => setSelectedCorruptionId(row.id)}
+                mobileCardTitle={(row) => {
+                    // Format title for mobile cards
+                    if (row.media_title) {
+                        if (row.media_type === 'series' && row.season_number && row.episode_number) {
+                            const s = String(row.season_number).padStart(2, '0');
+                            const e = String(row.episode_number).padStart(2, '0');
+                            return `${row.media_title} S${s}E${e}`;
+                        } else if (row.media_year) {
+                            return `${row.media_title} (${row.media_year})`;
+                        }
+                        return row.media_title;
+                    }
+                    const parts = row.file_path.split('/');
+                    return parts.pop() || row.file_path;
+                }}
                 columns={[
                     {
                         header: (
@@ -273,7 +293,8 @@ const Corruptions = () => {
                         ),
                         className: 'w-10',
                         stopPropagation: true,
-                        onCellClick: (row, index, e) => toggleSelect(row.id, index, e)
+                        onCellClick: (row, index, e) => toggleSelect(row.id, index, e),
+                        hideOnMobile: true, // Bulk select doesn't work well on mobile
                     },
                     {
                         header: (
@@ -287,7 +308,8 @@ const Corruptions = () => {
                                 <span className="text-xs text-slate-500">{formatDate(row.detected_at)}</span>
                             </div>
                         ),
-                        className: 'w-32'
+                        className: 'w-32',
+                        mobileLabel: 'Detected',
                     },
                     {
                         header: (
@@ -295,6 +317,7 @@ const Corruptions = () => {
                                 Media <ArrowUpDown className="w-3 h-3" />
                             </button>
                         ),
+                        hideOnMobile: true, // We use mobileCardTitle for this
                         accessorKey: (row) => {
                             // Format media title like "Colony S01E08" or "The Matrix (1999)"
                             let displayTitle = '';
@@ -370,7 +393,8 @@ const Corruptions = () => {
                                 </span>
                             );
                         },
-                        className: 'w-24 text-right'
+                        className: 'w-24 text-right',
+                        mobileLabel: 'Size',
                     },
                     {
                         header: (
@@ -382,7 +406,8 @@ const Corruptions = () => {
                             <span className="text-slate-700 dark:text-slate-300">
                                 {formatCorruptionType(row.corruption_type || 'Unknown')}
                             </span>
-                        )
+                        ),
+                        mobileLabel: 'Type',
                     },
                     {
                         header: (
@@ -440,9 +465,11 @@ const Corruptions = () => {
                                     {label}
                                 </span>
                             );
-                        }
+                        },
+                        mobileLabel: 'Status',
+                        isPrimary: true, // Show status in card header on mobile
                     },
-                    { header: 'Retries', accessorKey: 'retry_count', className: 'text-center w-20' },
+                    { header: 'Retries', accessorKey: 'retry_count', className: 'text-center w-20', mobileLabel: 'Retries' },
                 ]}
                 pagination={{
                     page: data?.pagination?.page || 1,

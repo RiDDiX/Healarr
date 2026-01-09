@@ -390,3 +390,130 @@ func (s *RESTServer) updateScanPath(c *gin.Context) {
 	}
 	c.Status(http.StatusOK)
 }
+
+// pathValidationResult holds the results of path validation.
+type pathValidationResult struct {
+	Accessible  bool     `json:"accessible"`
+	FileCount   int      `json:"file_count"`
+	SampleFiles []string `json:"sample_files"`
+	Error       *string  `json:"error"`
+}
+
+// classifyPathError returns a user-friendly error message for path access errors.
+func classifyPathError(err error) string {
+	if os.IsNotExist(err) {
+		return "Path does not exist"
+	}
+	if os.IsPermission(err) {
+		return "Permission denied"
+	}
+	return "Path not accessible"
+}
+
+// validationMediaExtensions defines supported media file extensions for validation.
+var validationMediaExtensions = map[string]bool{
+	".mkv": true, ".mp4": true, ".avi": true, ".mov": true,
+	".wmv": true, ".flv": true, ".webm": true, ".m4v": true,
+	".ts": true, ".m2ts": true, ".mpg": true, ".mpeg": true,
+}
+
+// countMediaFiles walks a directory and counts media files, collecting samples.
+// maxFiles limits the count to prevent slow responses on very large libraries.
+func countMediaFiles(basePath string, maxSamples, maxFiles int) (int, []string, bool) {
+	var fileCount int
+	var sampleFiles []string
+	truncated := false
+
+	_ = filepath.WalkDir(basePath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil // Skip inaccessible directories
+		}
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if !validationMediaExtensions[ext] {
+			return nil
+		}
+
+		fileCount++
+		if len(sampleFiles) < maxSamples {
+			relPath, relErr := filepath.Rel(basePath, path)
+			if relErr != nil {
+				relPath = d.Name()
+			}
+			sampleFiles = append(sampleFiles, relPath)
+		}
+
+		// Stop early if we've counted enough files (performance optimization)
+		if maxFiles > 0 && fileCount >= maxFiles {
+			truncated = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+
+	return fileCount, sampleFiles, truncated
+}
+
+// validateScanPath checks if a scan path is accessible and returns file statistics.
+// GET /config/paths/:id/validate
+func (s *RESTServer) validateScanPath(c *gin.Context) {
+	id := c.Param("id")
+
+	// Get the path from database
+	var localPath string
+	err := s.db.QueryRow("SELECT local_path FROM scan_paths WHERE id = ?", id).Scan(&localPath)
+	if err == sql.ErrNoRows {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Scan path not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Check if path exists and is accessible
+	info, err := os.Stat(localPath)
+	if err != nil {
+		errMsg := classifyPathError(err)
+		c.JSON(http.StatusOK, pathValidationResult{
+			Accessible:  false,
+			SampleFiles: []string{},
+			Error:       &errMsg,
+		})
+		return
+	}
+
+	if !info.IsDir() {
+		errMsg := "Path is not a directory"
+		c.JSON(http.StatusOK, pathValidationResult{
+			Accessible:  false,
+			SampleFiles: []string{},
+			Error:       &errMsg,
+		})
+		return
+	}
+
+	// Count media files and collect samples (limit to 10000 for performance)
+	fileCount, sampleFiles, truncated := countMediaFiles(localPath, 5, 10000)
+
+	result := pathValidationResult{
+		Accessible:  true,
+		FileCount:   fileCount,
+		SampleFiles: sampleFiles,
+		Error:       nil,
+	}
+
+	// Indicate if count was truncated for very large libraries
+	if truncated {
+		truncMsg := "Count limited to 10,000 files for performance"
+		result.Error = &truncMsg
+	}
+
+	c.JSON(http.StatusOK, result)
+}
