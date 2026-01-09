@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Scan details load with fewer database queries
   - Path validation limits file scanning to prevent timeouts
 
+### Fixed
+- **Logs Page Scroll**: Fixed auto-scroll jumping to bottom when viewing older logs
+  - Auto-scroll now pauses when you scroll up
+  - Resumes automatically when you scroll back to the bottom
+
 ## [1.1.24] - 2026-01-09
 
 ### Improved
