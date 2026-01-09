@@ -8,6 +8,7 @@ import { Terminal, Pause, Play, Trash2, Download, Loader2 } from 'lucide-react';
 import { useToast } from '../contexts/ToastContext';
 
 const LOGS_PER_PAGE = 100;
+const SCROLL_THRESHOLD = 50; // pixels from bottom to consider "at bottom"
 
 const Logs = () => {
     const { lastMessage, isConnected: wsConnected, reconnect: wsReconnect } = useWebSocket();
@@ -19,17 +20,35 @@ const Logs = () => {
     const [currentOffset, setCurrentOffset] = useState(0);
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [initialLoadDone, setInitialLoadDone] = useState(false);
+    const [isUserAtBottom, setIsUserAtBottom] = useState(true); // Track if user is at bottom
     const bottomRef = useRef<HTMLDivElement>(null);
     const topRef = useRef<HTMLDivElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const toast = useToast();
     const prevBackendConnected = useRef(backendConnected);
     const prevWsConnected = useRef(wsConnected);
+    const isLoadingOlderLogs = useRef(false); // Track if we're loading older logs
+
+    // Check if user is at (or near) the bottom of the scroll container
+    const checkIfAtBottom = useCallback(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return true;
+        const { scrollTop, scrollHeight, clientHeight } = container;
+        return scrollHeight - scrollTop - clientHeight <= SCROLL_THRESHOLD;
+    }, []);
+
+    // Handle scroll events to track user position
+    const handleScroll = useCallback(() => {
+        // Don't update state while loading older logs (would cause unwanted re-renders)
+        if (isLoadingOlderLogs.current) return;
+        setIsUserAtBottom(checkIfAtBottom());
+    }, [checkIfAtBottom]);
 
     // Load older logs when user scrolls to top
     const loadMoreLogs = useCallback(async () => {
         if (isLoadingMore || !hasMore) return;
 
+        isLoadingOlderLogs.current = true;
         setIsLoadingMore(true);
         const scrollContainer = scrollContainerRef.current;
         const previousScrollHeight = scrollContainer?.scrollHeight || 0;
@@ -51,10 +70,15 @@ const Logs = () => {
                         const newScrollHeight = scrollContainer.scrollHeight;
                         scrollContainer.scrollTop = newScrollHeight - previousScrollHeight;
                     }
+                    // Allow scroll tracking again after position is restored
+                    isLoadingOlderLogs.current = false;
                 });
+            } else {
+                isLoadingOlderLogs.current = false;
             }
         } catch (error) {
             console.error('Failed to load more logs:', error);
+            isLoadingOlderLogs.current = false;
         } finally {
             setIsLoadingMore(false);
         }
@@ -145,12 +169,26 @@ const Logs = () => {
         }
     }, [lastMessage, isPaused]);
 
-    // Auto-scroll to bottom for new logs when not paused
+    // Auto-scroll to bottom for new logs when user is at bottom and not paused
     useEffect(() => {
-        if (!isPaused && bottomRef.current && initialLoadDone) {
-            bottomRef.current.scrollIntoView({ behavior: 'smooth' });
+        // Only auto-scroll if:
+        // 1. Not paused
+        // 2. User is at (or near) the bottom
+        // 3. Initial load is done
+        // 4. Not currently loading older logs
+        if (!isPaused && isUserAtBottom && initialLoadDone && !isLoadingOlderLogs.current) {
+            bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [logs.length, isPaused, initialLoadDone]);
+    }, [logs.length, isPaused, isUserAtBottom, initialLoadDone]);
+
+    // Attach scroll listener to track user position
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+
+        container.addEventListener('scroll', handleScroll, { passive: true });
+        return () => container.removeEventListener('scroll', handleScroll);
+    }, [handleScroll]);
 
     const formatLogTime = (timestamp: string) => {
         try {
@@ -212,7 +250,18 @@ const Logs = () => {
                         ))}
                     </div>
                     <button
-                        onClick={() => setIsPaused(!isPaused)}
+                        onClick={() => {
+                            if (isPaused) {
+                                // Resuming: scroll to bottom and enable auto-scroll
+                                setIsPaused(false);
+                                setIsUserAtBottom(true);
+                                requestAnimationFrame(() => {
+                                    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+                                });
+                            } else {
+                                setIsPaused(true);
+                            }
+                        }}
                         className={clsx(
                             "p-2 rounded-lg border transition-colors cursor-pointer",
                             isPaused
