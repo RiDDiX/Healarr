@@ -4,6 +4,12 @@ reviews:
   auto_review:
     enabled: true
     drafts: false
+    # Skip auto-review for these paths (still reviewed if manually requested)
+    ignore:
+      - "**/*.md"           # Documentation updates
+      - "**/migrations/*.sql"  # SQL migrations are immutable once deployed
+      - "frontend/dist/**"     # Built assets
+      - "web/**"               # Embedded frontend
   path_instructions:
     - path: "**/*.go"
       instructions: |
@@ -12,17 +18,34 @@ reviews:
         - SQL injection risks in dynamic queries
         - Proper resource cleanup (defer, context timeouts)
         - Race conditions in concurrent code
+        - Context propagation through function calls
+    - path: "internal/db/**/*.go"
+      instructions: |
+        Additional focus for database code:
+        - Transaction boundaries and rollback patterns
+        - Prepared statement usage vs string concatenation
+        - NULL handling with sql.NullString, sql.NullInt64
+        - Index usage for queries
+    - path: "internal/api/**/*.go"
+      instructions: |
+        Additional focus for API handlers:
+        - Input validation and sanitization
+        - Response status codes appropriateness
+        - Context timeout handling
+        - Authentication/authorization checks
     - path: "frontend/**/*.tsx"
       instructions: |
         Focus on:
         - React best practices and hooks usage
         - TypeScript type safety
         - Accessibility (a11y) issues
+        - Component re-render optimization
     - path: "**/*_test.go"
       instructions: |
         Focus on:
         - Test coverage for edge cases
         - Table-driven test patterns
-        - Proper cleanup in tests
+        - Proper cleanup in tests (t.Cleanup, defer)
+        - Test isolation (no shared state between tests)
 chat:
   auto_reply: true
