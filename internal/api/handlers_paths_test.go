@@ -1134,3 +1134,148 @@ func TestBrowseDirectory_NullByteBlocked(t *testing.T) {
 	json.Unmarshal(w.Body.Bytes(), &response)
 	assert.Equal(t, "Invalid path", response["error"])
 }
+
+// =============================================================================
+// classifyPathError Tests
+// =============================================================================
+
+func TestClassifyPathError_NotExist(t *testing.T) {
+	err := os.ErrNotExist
+	result := classifyPathError(err)
+	assert.Equal(t, "Path does not exist", result)
+}
+
+func TestClassifyPathError_Permission(t *testing.T) {
+	err := os.ErrPermission
+	result := classifyPathError(err)
+	assert.Equal(t, "Permission denied", result)
+}
+
+func TestClassifyPathError_Generic(t *testing.T) {
+	err := fmt.Errorf("some other error")
+	result := classifyPathError(err)
+	assert.Equal(t, "Path not accessible", result)
+}
+
+// =============================================================================
+// countMediaFiles Tests
+// =============================================================================
+
+func TestCountMediaFiles_EmptyDirectory(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-count-empty-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	count, samples, truncated := countMediaFiles(tmpDir, 5, 0)
+	assert.Equal(t, 0, count)
+	assert.Empty(t, samples)
+	assert.False(t, truncated)
+}
+
+func TestCountMediaFiles_MediaFilesOnly(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-count-media-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create media files
+	for _, ext := range []string{".mkv", ".mp4", ".avi"} {
+		f, err := os.Create(filepath.Join(tmpDir, "video"+ext))
+		require.NoError(t, err)
+		f.Close()
+	}
+
+	// Create non-media files (should be ignored)
+	for _, name := range []string{"readme.txt", "config.json", "thumb.jpg"} {
+		f, err := os.Create(filepath.Join(tmpDir, name))
+		require.NoError(t, err)
+		f.Close()
+	}
+
+	count, samples, truncated := countMediaFiles(tmpDir, 10, 0)
+	assert.Equal(t, 3, count)
+	assert.Len(t, samples, 3)
+	assert.False(t, truncated)
+}
+
+func TestCountMediaFiles_MaxSamples(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-count-maxsamples-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create 10 media files
+	for i := 0; i < 10; i++ {
+		f, err := os.Create(filepath.Join(tmpDir, fmt.Sprintf("video%d.mkv", i)))
+		require.NoError(t, err)
+		f.Close()
+	}
+
+	// Limit samples to 3
+	count, samples, truncated := countMediaFiles(tmpDir, 3, 0)
+	assert.Equal(t, 10, count) // All files counted
+	assert.Len(t, samples, 3)  // Only 3 samples returned
+	assert.False(t, truncated)
+}
+
+func TestCountMediaFiles_MaxFiles(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-count-maxfiles-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create 10 media files
+	for i := 0; i < 10; i++ {
+		f, err := os.Create(filepath.Join(tmpDir, fmt.Sprintf("video%d.mkv", i)))
+		require.NoError(t, err)
+		f.Close()
+	}
+
+	// Limit counting to 5 files
+	count, _, truncated := countMediaFiles(tmpDir, 10, 5)
+	assert.Equal(t, 5, count) // Stopped at max
+	assert.True(t, truncated) // Indicates truncation
+}
+
+func TestCountMediaFiles_SkipsHiddenDirectories(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-count-hidden-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create visible directory with media
+	visibleDir := filepath.Join(tmpDir, "visible")
+	require.NoError(t, os.MkdirAll(visibleDir, 0755))
+	f, err := os.Create(filepath.Join(visibleDir, "video.mkv"))
+	require.NoError(t, err)
+	f.Close()
+
+	// Create hidden directory with media (should be skipped)
+	hiddenDir := filepath.Join(tmpDir, ".hidden")
+	require.NoError(t, os.MkdirAll(hiddenDir, 0755))
+	f, err = os.Create(filepath.Join(hiddenDir, "video.mkv"))
+	require.NoError(t, err)
+	f.Close()
+
+	count, _, _ := countMediaFiles(tmpDir, 10, 0)
+	assert.Equal(t, 1, count) // Only the visible directory's file
+}
+
+func TestCountMediaFiles_NestedDirectories(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "healarr-count-nested-*")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+
+	// Create nested structure: /Season 1/episode.mkv, /Season 2/episode.mp4
+	for i := 1; i <= 3; i++ {
+		seasonDir := filepath.Join(tmpDir, fmt.Sprintf("Season %d", i))
+		require.NoError(t, os.MkdirAll(seasonDir, 0755))
+		f, err := os.Create(filepath.Join(seasonDir, fmt.Sprintf("episode%d.mkv", i)))
+		require.NoError(t, err)
+		f.Close()
+	}
+
+	count, samples, _ := countMediaFiles(tmpDir, 10, 0)
+	assert.Equal(t, 3, count)
+	assert.Len(t, samples, 3)
+	// Samples should be relative paths
+	for _, sample := range samples {
+		assert.Contains(t, sample, "Season")
+	}
+}
