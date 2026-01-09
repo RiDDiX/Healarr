@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.24] - 2026-01-09
+
+### Improved
+- **CI/CD Quality**: Fixed code quality pipeline configuration
+  - SonarCloud now correctly excludes test utilities from coverage calculations
+  - Quality gate checks pass consistently on all pull requests
+- **Test Coverage**: Additional edge case testing
+  - Media details lookup now thoroughly tested (movie and series)
+  - File accessibility checks have improved coverage
+
 ## [1.1.23] - 2026-01-09
 
 ### Improved
