@@ -4,13 +4,13 @@
 export function formatCorruptionType(type: string): string {
     const typeMap: Record<string, string> = {
         'CorruptHeader': 'Corrupt Header',
-        'TruncatedFile': 'Truncated File',
+        'TruncatedFile': 'Incomplete File',
         'EmptyFile': 'Empty File',
-        'StreamError': 'Stream Error',
-        'CodecError': 'Codec Error',
+        'StreamError': 'Playback Error',
+        'CodecError': 'Format Error',
         'InvalidFormat': 'Invalid Format',
         'BitrateError': 'Bitrate Error',
-        'Unknown': 'Unknown Error',
+        'Unknown': 'Unknown Issue',
     };
 
     return typeMap[type] || type.replace(/([A-Z])/g, ' $1').trim();
@@ -36,7 +36,7 @@ export function formatCorruptionState(state: string): { label: string; colorClas
     
     // Max retries reached - permanent failure (red)
     if (state === 'MaxRetriesReached') {
-        return { label: 'Max Retries', colorClass: 'bg-red-500/10 text-red-400 border-red-500/20' };
+        return { label: 'Failed - Needs Review', colorClass: 'bg-red-500/10 text-red-400 border-red-500/20' };
     }
     
     // Temporary failures - will retry (orange)
@@ -60,18 +60,18 @@ export function formatCorruptionState(state: string): { label: string; colorClas
 
     // Stuck remediation - item hasn't progressed in 24+ hours (orange - needs attention)
     if (state === 'StuckRemediation') {
-        return { label: 'Stuck Remediation', colorClass: 'bg-orange-500/10 text-orange-400 border-orange-500/20' };
+        return { label: 'Taking Too Long', colorClass: 'bg-orange-500/10 text-orange-400 border-orange-500/20' };
     }
 
     // Manual intervention required (purple/magenta - needs user attention)
     if (state === 'ImportBlocked') {
-        return { label: '⚠️ Import Blocked', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
+        return { label: 'Import Failed', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
     }
     if (state === 'ManuallyRemoved') {
-        return { label: '⚠️ Manually Removed', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
+        return { label: 'Manually Removed', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
     }
     if (state === 'DownloadIgnored') {
-        return { label: '⚠️ Download Ignored', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
+        return { label: 'Ignored by User', colorClass: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
     }
 
     // Pending - just detected (amber)
@@ -197,27 +197,27 @@ export function getEventDescription(eventType: string, data?: Record<string, unk
     }
     
     const descriptions: Record<string, string> = {
-        'CorruptionDetected': 'Corruption detected',
-        'RemediationQueued': 'Remediation queued',
+        'CorruptionDetected': 'Corruption Detected',
+        'RemediationQueued': 'Queued for automatic fix',
         'DeletionStarted': 'Deleting corrupt file',
         'DeletionCompleted': 'Corrupt file deleted',
         'DeletionFailed': 'File deletion failed',
-        'SearchStarted': 'Searching for replacement',
+        'SearchStarted': 'Looking for replacement',
         'SearchCompleted': 'Replacement found, downloading',
         'SearchFailed': 'Search for replacement failed',
-        'SearchExhausted': 'No replacement found - check indexers or retry manually',
-        'StuckRemediation': 'Item stuck for 24+ hours - check *arr queue or retry',
+        'SearchExhausted': 'No copies found - try manual search in *arr',
+        'StuckRemediation': 'Taking too long - check *arr queue or retry',
         'FileDetected': 'New file detected',
         'VerificationStarted': 'Verifying replacement file',
-        'VerificationSuccess': 'Verification passed - resolved',
-        'VerificationFailed': 'Replacement file also corrupt',
+        'VerificationSuccess': 'New file verified - fixed!',
+        'VerificationFailed': 'New file also has issues - trying again',
         'MaxRetriesReached': 'Maximum retries exhausted',
         'RetryScheduled': 'Retry scheduled',
         'DownloadTimeout': 'Download timed out',
         'CorruptionIgnored': 'Marked as ignored',
-        'ImportBlocked': '⚠️ Import blocked - check *arr Activity → Queue for errors',
-        'ManuallyRemoved': '⚠️ Removed from queue - re-add in *arr or retry here',
-        'DownloadIgnored': '⚠️ Download ignored - unblock in *arr Activity → Queue',
+        'ImportBlocked': 'Import failed - check *arr Activity → Queue for errors',
+        'ManuallyRemoved': 'Removed from queue - re-add in *arr or retry here',
+        'DownloadIgnored': 'Ignored by user - unblock in *arr Activity → Queue',
     };
     
     return descriptions[eventType] || eventType.replace(/([A-Z])/g, ' $1').trim();
@@ -452,4 +452,33 @@ export function formatCronExpression(cron: string): string {
 
     // Fallback: return a simplified description
     return cron;
+}
+
+/**
+ * Format a date/time as relative time (e.g., "3h ago", "2 days ago")
+ * @param isoDate - ISO date string or Date object
+ * @returns Relative time string
+ */
+export function formatDistanceToNow(isoDate: string | Date | null | undefined): string {
+    if (!isoDate) return 'never';
+
+    const date = typeof isoDate === 'string' ? new Date(isoDate) : isoDate;
+    if (isNaN(date.getTime())) return 'invalid date';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 10) return 'just now';
+    if (diffSecs < 60) return `${diffSecs}s ago`;
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return 'yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    return `${Math.floor(diffDays / 365)} years ago`;
 }
