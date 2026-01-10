@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 import clsx from 'clsx';
@@ -25,6 +26,26 @@ const ConfirmDialog = ({
     onConfirm,
     onCancel,
 }: ConfirmDialogProps) => {
+    const confirmButtonRef = useRef<HTMLButtonElement>(null);
+
+    // Focus confirm button when dialog opens
+    useEffect(() => {
+        if (isOpen && confirmButtonRef.current) {
+            confirmButtonRef.current.focus();
+        }
+    }, [isOpen]);
+
+    // Handle escape key
+    useEffect(() => {
+        const handleEscape = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && isOpen && !isLoading) {
+                onCancel();
+            }
+        };
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, [isOpen, isLoading, onCancel]);
+
     const variantStyles = {
         danger: {
             icon: Trash2,
@@ -57,7 +78,7 @@ const ConfirmDialog = ({
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-                    onClick={onCancel}
+                    onClick={!isLoading ? onCancel : undefined}
                     role="dialog"
                     aria-modal="true"
                     aria-labelledby="confirm-dialog-title"
@@ -67,7 +88,7 @@ const ConfirmDialog = ({
                         initial={{ scale: 0.95, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.95, opacity: 0 }}
-                        className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl"
+                        className="relative bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl"
                         onClick={(e) => e.stopPropagation()}
                     >
                         <div className="text-center mb-6">
@@ -94,6 +115,7 @@ const ConfirmDialog = ({
                                 {cancelLabel}
                             </button>
                             <button
+                                ref={confirmButtonRef}
                                 onClick={onConfirm}
                                 disabled={isLoading}
                                 className={clsx(
@@ -115,7 +137,8 @@ const ConfirmDialog = ({
                         {/* Close button */}
                         <button
                             onClick={onCancel}
-                            className="absolute top-4 right-4 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                            disabled={isLoading}
+                            className="absolute top-4 right-4 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer disabled:opacity-50"
                             aria-label="Close dialog"
                         >
                             <X className="w-5 h-5" aria-hidden="true" />
