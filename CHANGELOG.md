@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.31] - 2026-01-10
+
+### Fixed
+- **Mobile Table View**: Fixed tables showing mobile card view instead of desktop table
+  - Tailwind JIT now correctly compiles responsive breakpoint classes
+  - Scans and Scan Details pages display proper tables on desktop
+- **Filter Dropdown**: Fixed filter disappearing when no results match
+  - Filter controls now stay visible regardless of filtered result count
+  - Users can always change filters even with zero matching items
+- **Database Query Stability**: Fixed flaky "context canceled" errors during queries
+  - QueryWithRetry no longer cancels context prematurely
+  - Prevents intermittent failures when iterating database results
+
 ## [1.1.30] - 2026-01-10
 
 ### Improved
