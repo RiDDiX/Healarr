@@ -201,7 +201,8 @@ const ScanDetails = () => {
         );
     }
 
-    const hasFileData = (filesData?.pagination?.total || 0) > 0;
+    // Check if the scan has ANY file data (regardless of current filter)
+    const hasScanFileData = (scanDetails?.files_scanned || 0) > 0;
 
     return (
         <div className="space-y-6">
@@ -437,7 +438,7 @@ const ScanDetails = () => {
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
                     <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Scanned Files</h2>
-                    {hasFileData && (
+                    {hasScanFileData && (
                         <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800/50 p-1 rounded-lg">
                             <Filter className="w-4 h-4 text-slate-600 dark:text-slate-400 ml-2" />
                             <select
@@ -458,7 +459,7 @@ const ScanDetails = () => {
                     )}
                 </div>
 
-                {!hasFileData ? (
+                {!hasScanFileData ? (
                     <div className="p-8 text-center">
                         <div className="inline-flex p-4 rounded-full bg-slate-100 dark:bg-slate-800/50 mb-4">
                             {isRunning ? (
@@ -481,11 +482,14 @@ const ScanDetails = () => {
                         <DataGrid
                             isLoading={isLoadingFiles}
                             data={filesData?.data || []}
+                            mobileCardTitle={(row: ScanFile) => row.file_path.split('/').pop() || row.file_path}
                             columns={[
                                 {
                                     header: 'Status',
                                     accessorKey: (row: ScanFile) => getFileStatusBadge(row),
-                                    className: 'w-28'
+                                    className: 'w-28',
+                                    mobileLabel: 'Status',
+                                    isPrimary: true,
                                 },
                                 {
                                     header: 'File Path',
@@ -534,14 +538,16 @@ const ScanDetails = () => {
                                                 </div>
                                             )}
                                         </div>
-                                    )
+                                    ),
+                                    mobileLabel: 'Path',
                                 },
                                 {
                                     header: 'Size',
                                     accessorKey: (row: ScanFile) => (
                                         <span className="text-slate-600 dark:text-slate-400">{formatBytes(row.file_size)}</span>
                                     ),
-                                    className: 'w-24'
+                                    className: 'w-24',
+                                    mobileLabel: 'Size',
                                 },
                                 {
                                     header: 'Scanned At',
@@ -550,7 +556,8 @@ const ScanDetails = () => {
                                             {formatTime(row.scanned_at)}
                                         </span>
                                     ),
-                                    className: 'w-28'
+                                    className: 'w-28',
+                                    mobileLabel: 'Scanned',
                                 }
                             ]}
                             pagination={filesData?.pagination ? {
