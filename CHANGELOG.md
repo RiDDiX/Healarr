@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.32] - 2026-01-11
+
+### Added
+- **Retry All Button**: Manual intervention banner now has a "Retry All" button
+  - Previously mentioned clicking "Retry here" but no button existed
+  - Bulk retry functionality for all items needing manual intervention
+- **Episode Titles**: TV shows now display episode titles in the format "Series S01E08 - Episode Title"
+  - Richer context for identifying specific episodes
+- **Event Replay Service**: Unprocessed events are now replayed on startup
+  - Fixes race condition where events published just before restart weren't processed
+  - Ensures CorruptionDetected events are delivered to remediator after restart
+
+### Fixed
+- **False ManuallyRemoved State**: Items no longer incorrectly marked as removed when import succeeds
+  - Checks for import events in history before marking as ManuallyRemoved
+  - Handles NFS sync delays and path mapping timing issues
+- **Recovery Service State Coverage**: All intermediate states now recovered on startup
+  - Previously missed `RemediationQueued`, `DeletionStarted`, `DeletionCompleted` states
+  - Items stuck in early remediation states are now properly reprocessed
+- **Lost Retry Timers**: Retry schedules are now preserved across restarts
+  - Failed states (`SearchFailed`, `RemediationFailed`, etc.) trigger retry on startup
+  - Items at max retries correctly transition to `MaxRetriesReached`
+
+### Improved
+- **EventBus Buffer Monitoring**: Warning logged when subscriber buffer is full
+  - Events are still persisted to DB (not lost), warning aids debugging
+- **Semaphore Timeout**: Remediator semaphore now has 2-minute timeout
+  - Prevents indefinite hangs if HTTP calls get stuck
+  - Emits failure event on timeout for proper retry flow
+- **Verifier Concurrency Limit**: Maximum 50 concurrent verification goroutines
+  - Prevents resource exhaustion during bulk scans
+  - 5-minute timeout with appropriate failure events
+
 ## [1.1.31] - 2026-01-10
 
 ### Fixed
