@@ -819,6 +819,89 @@ func TestVerifierService_CheckHistoryForImport(t *testing.T) {
 }
 
 // =============================================================================
+// hasImportEventInHistory tests
+// =============================================================================
+
+func TestVerifierService_HasImportEventInHistory(t *testing.T) {
+	config.SetForTesting(config.NewTestConfig())
+
+	db, err := testutil.NewTestDB()
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	t.Run("returns true when import event exists", func(t *testing.T) {
+		eb := eventbus.NewEventBus(db)
+		defer eb.Shutdown()
+
+		mockArr := &testutil.MockArrClient{
+			GetRecentHistoryForMediaByPathFunc: func(arrPath string, mediaID int64, limit int) ([]integration.HistoryItemInfo, error) {
+				return []integration.HistoryItemInfo{
+					{EventType: "grabbed"},
+					{EventType: "downloadFolderImported"},
+				}, nil
+			},
+		}
+
+		verifier := NewVerifierService(eb, nil, nil, mockArr, db)
+
+		result, err := verifier.hasImportEventInHistory("/movies", 123)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if !result {
+			t.Error("Expected true when import event exists in history")
+		}
+	})
+
+	t.Run("returns false when no import event exists", func(t *testing.T) {
+		eb := eventbus.NewEventBus(db)
+		defer eb.Shutdown()
+
+		mockArr := &testutil.MockArrClient{
+			GetRecentHistoryForMediaByPathFunc: func(arrPath string, mediaID int64, limit int) ([]integration.HistoryItemInfo, error) {
+				return []integration.HistoryItemInfo{
+					{EventType: "grabbed"},
+					{EventType: "downloadCompleted"},
+				}, nil
+			},
+		}
+
+		verifier := NewVerifierService(eb, nil, nil, mockArr, db)
+
+		result, err := verifier.hasImportEventInHistory("/movies", 123)
+		if err != nil {
+			t.Errorf("Unexpected error: %v", err)
+		}
+		if result {
+			t.Error("Expected false when no import event in history")
+		}
+	})
+
+	t.Run("returns error when history API fails", func(t *testing.T) {
+		eb := eventbus.NewEventBus(db)
+		defer eb.Shutdown()
+
+		mockArr := &testutil.MockArrClient{
+			GetRecentHistoryForMediaByPathFunc: func(arrPath string, mediaID int64, limit int) ([]integration.HistoryItemInfo, error) {
+				return nil, errPathNotConfigured
+			},
+		}
+
+		verifier := NewVerifierService(eb, nil, nil, mockArr, db)
+
+		result, err := verifier.hasImportEventInHistory("/movies", 123)
+		if err == nil {
+			t.Error("Expected error when history API fails")
+		}
+		if result {
+			t.Error("Expected false when history API fails")
+		}
+	})
+}
+
+// =============================================================================
 // pollForFileWithBackoff tests
 // =============================================================================
 
@@ -2211,6 +2294,191 @@ func TestBuildProgressEventData(t *testing.T) {
 		}
 		if _, exists := result["warning_message"]; exists {
 			t.Error("Expected no warning_message field when warningMsg is empty")
+		}
+	})
+}
+
+// =============================================================================
+// Helper function tests for download monitoring
+// =============================================================================
+
+func TestVerifierService_HandleHistoryAPIFailure(t *testing.T) {
+	db, err := testutil.NewTestDB()
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	eb := eventbus.NewEventBus(db)
+	defer eb.Shutdown()
+
+	mockHC := &testutil.MockHealthChecker{}
+	mockPM := &testutil.MockPathMapper{}
+	mockArr := &testutil.MockArrClient{}
+
+	v := NewVerifierService(eb, mockHC, mockPM, mockArr, db)
+	defer v.Shutdown()
+
+	t.Run("continues monitoring on first failure", func(t *testing.T) {
+		state := &monitorState{
+			corruptionID:    "test-123",
+			apiFailureCount: 0,
+		}
+
+		action := v.handleHistoryAPIFailure(state, 5*time.Minute, testutil.ErrMockAPIFailure)
+
+		if action != monitorContinue {
+			t.Errorf("Expected monitorContinue, got %v", action)
+		}
+		if state.apiFailureCount != 1 {
+			t.Errorf("Expected apiFailureCount 1, got %d", state.apiFailureCount)
+		}
+	})
+
+	t.Run("continues monitoring on fourth failure", func(t *testing.T) {
+		state := &monitorState{
+			corruptionID:    "test-456",
+			apiFailureCount: 3,
+		}
+
+		action := v.handleHistoryAPIFailure(state, 10*time.Minute, testutil.ErrMockAPIFailure)
+
+		if action != monitorContinue {
+			t.Errorf("Expected monitorContinue, got %v", action)
+		}
+		if state.apiFailureCount != 4 {
+			t.Errorf("Expected apiFailureCount 4, got %d", state.apiFailureCount)
+		}
+	})
+
+	t.Run("stops monitoring after fifth failure and publishes timeout", func(t *testing.T) {
+		state := &monitorState{
+			corruptionID:    "test-789",
+			apiFailureCount: 4,
+		}
+
+		action := v.handleHistoryAPIFailure(state, 15*time.Minute, testutil.ErrMockAPIFailure)
+
+		if action != monitorStop {
+			t.Errorf("Expected monitorStop, got %v", action)
+		}
+		if state.apiFailureCount != 5 {
+			t.Errorf("Expected apiFailureCount 5, got %d", state.apiFailureCount)
+		}
+
+		// Verify DownloadTimeout event was published
+		events, err := testutil.GetEventsByAggregate(db, "test-789")
+		if err != nil {
+			t.Fatalf("Failed to get events: %v", err)
+		}
+		var found bool
+		for _, e := range events {
+			if e.EventType == domain.DownloadTimeout {
+				found = true
+				if reason, _ := e.GetString("reason"); reason != "api_unavailable" {
+					t.Errorf("Expected reason 'api_unavailable', got %q", reason)
+				}
+			}
+		}
+		if !found {
+			t.Error("Expected DownloadTimeout event to be published")
+		}
+	})
+}
+
+func TestVerifierService_HandleDisappearedQueueItem(t *testing.T) {
+	db, err := testutil.NewTestDB()
+	if err != nil {
+		t.Fatalf("Failed to create test database: %v", err)
+	}
+	defer db.Close()
+
+	eb := eventbus.NewEventBus(db)
+	defer eb.Shutdown()
+
+	mockHC := &testutil.MockHealthChecker{}
+	mockPM := &testutil.MockPathMapper{}
+
+	t.Run("continues monitoring when import found in history", func(t *testing.T) {
+		mockArr := &testutil.MockArrClient{}
+		mockArr.SetHistoryHasImport(true)
+		v := NewVerifierService(eb, mockHC, mockPM, mockArr, db)
+		defer v.Shutdown()
+
+		state := &monitorState{
+			corruptionID:    "import-test-1",
+			arrPath:         "/media/movies/test.mkv",
+			mediaID:         123,
+			apiFailureCount: 0,
+		}
+
+		action := v.handleDisappearedQueueItem(state, 5*time.Minute)
+
+		if action != monitorContinue {
+			t.Errorf("Expected monitorContinue when import found, got %v", action)
+		}
+		if state.apiFailureCount != 0 {
+			t.Errorf("Expected apiFailureCount to be reset to 0, got %d", state.apiFailureCount)
+		}
+	})
+
+	t.Run("stops and publishes ManuallyRemoved when no import in history", func(t *testing.T) {
+		mockArr := &testutil.MockArrClient{}
+		mockArr.SetHistoryHasImport(false)
+		v := NewVerifierService(eb, mockHC, mockPM, mockArr, db)
+		defer v.Shutdown()
+
+		state := &monitorState{
+			corruptionID:    "removed-test-1",
+			arrPath:         "/media/movies/removed.mkv",
+			mediaID:         456,
+			lastStatus:      "downloading",
+			apiFailureCount: 0,
+		}
+
+		action := v.handleDisappearedQueueItem(state, 5*time.Minute)
+
+		if action != monitorStop {
+			t.Errorf("Expected monitorStop when no import found, got %v", action)
+		}
+
+		// Verify ManuallyRemoved event was published
+		events, err := testutil.GetEventsByAggregate(db, "removed-test-1")
+		if err != nil {
+			t.Fatalf("Failed to get events: %v", err)
+		}
+		var found bool
+		for _, e := range events {
+			if e.EventType == domain.ManuallyRemoved {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("Expected ManuallyRemoved event to be published")
+		}
+	})
+
+	t.Run("handles API failure gracefully", func(t *testing.T) {
+		mockArr := &testutil.MockArrClient{}
+		mockArr.SetHistoryError(testutil.ErrMockAPIFailure)
+		v := NewVerifierService(eb, mockHC, mockPM, mockArr, db)
+		defer v.Shutdown()
+
+		state := &monitorState{
+			corruptionID:    "api-fail-test-1",
+			arrPath:         "/media/movies/fail.mkv",
+			mediaID:         789,
+			apiFailureCount: 0,
+		}
+
+		action := v.handleDisappearedQueueItem(state, 5*time.Minute)
+
+		// Should continue monitoring on first API failure
+		if action != monitorContinue {
+			t.Errorf("Expected monitorContinue on first API failure, got %v", action)
+		}
+		if state.apiFailureCount != 1 {
+			t.Errorf("Expected apiFailureCount 1, got %d", state.apiFailureCount)
 		}
 	})
 }
