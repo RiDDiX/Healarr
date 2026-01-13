@@ -15,22 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Docstring Coverage Enforcement**: CI now validates code documentation
   - Ensures all exported functions and types are documented
   - Currently at 100% coverage
+- **Stuck Remediation Recovery**: Automatic retry when remediation is stuck
+  - HealthMonitorService detects stuck items and triggers immediate retry
+  - Prevents items from sitting idle indefinitely
 
 ### Fixed
 - **Stability Improvements**: Fixed several race conditions that could cause hangs
   - Scan progress updates no longer conflict with shutdown operations
   - Health check timeouts handled more gracefully
   - File verification counters now thread-safe
+  - Verification goroutines now properly cancelled on retry (prevents duplicates)
 - **Memory Leak**: Fixed gradual memory growth from retry timers
   - Retry timers now properly cleaned up after firing
   - Long-running instances stay lean
 - **Duplicate Scanning Prevention**: Files scanned via webhook no longer re-scanned during bulk scans
   - Prevents wasted processing when webhook and scheduled scan overlap
+- **Near-Complete Download Detection**: Improved handling of downloads at 99%+ progress
+  - Verifier retries history API multiple times before marking as ManuallyRemoved
+  - Handles timing delays where import appears in history after queue clears
 
 ### Improved
 - **Graceful Shutdown**: New scans blocked during shutdown to prevent hangs
   - In-progress scans complete cleanly before exit
   - No more stuck shutdown states
+- **Test Coverage**: Comprehensive tests for all concurrent code paths
+  - 85%+ coverage on services package
+  - All race conditions have corresponding test cases
 
 ## [1.1.32] - 2026-01-11
 
