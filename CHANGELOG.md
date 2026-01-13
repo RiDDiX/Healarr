@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.33] - 2026-01-13
+
+### Added
+- **New Notification Events**: Three additional events for better monitoring
+  - "Stuck Remediation" - When a remediation hasn't progressed for too long
+  - "Arr Instance Healthy" - When a previously unreachable *arr instance recovers
+  - "Corruption Ignored" - When you manually dismiss a detected corruption
+- **Docstring Coverage Enforcement**: CI now validates code documentation
+  - Ensures all exported functions and types are documented
+  - Currently at 100% coverage
+
+### Fixed
+- **Stability Improvements**: Fixed several race conditions that could cause hangs
+  - Scan progress updates no longer conflict with shutdown operations
+  - Health check timeouts handled more gracefully
+  - File verification counters now thread-safe
+- **Memory Leak**: Fixed gradual memory growth from retry timers
+  - Retry timers now properly cleaned up after firing
+  - Long-running instances stay lean
+- **Duplicate Scanning Prevention**: Files scanned via webhook no longer re-scanned during bulk scans
+  - Prevents wasted processing when webhook and scheduled scan overlap
+
+### Improved
+- **Graceful Shutdown**: New scans blocked during shutdown to prevent hangs
+  - In-progress scans complete cleanly before exit
+  - No more stuck shutdown states
+
 ## [1.1.32] - 2026-01-11
 
 ### Added
