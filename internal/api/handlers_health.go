@@ -104,25 +104,35 @@ func (s *RESTServer) checkArrInstancesHealth(ctx context.Context) arrHealthResul
 }
 
 // checkSingleArrInstance checks if a single arr instance is online
+// Tries API v3 (Sonarr/Radarr/Whisparr) first, then v1 (Lidarr)
 func (s *RESTServer) checkSingleArrInstance(ctx context.Context, client *http.Client, url, apiKey string) bool {
-	testURL := strings.TrimSuffix(url, "/") + "/api/v3/system/status"
-	req, err := http.NewRequestWithContext(ctx, "GET", testURL, nil)
-	if err != nil {
-		return false
-	}
-	req.Header.Set("X-Api-Key", apiKey)
+	baseURL := strings.TrimSuffix(url, "/")
+	apiPaths := []string{"/api/v3/system/status", "/api/v1/system/status"}
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			logger.Debugf("Failed to close response body: %v", err)
+	for _, apiPath := range apiPaths {
+		testURL := baseURL + apiPath
+		req, err := http.NewRequestWithContext(ctx, "GET", testURL, nil)
+		if err != nil {
+			continue
 		}
-	}()
+		req.Header.Set("X-Api-Key", apiKey)
 
-	return resp.StatusCode == http.StatusOK
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				logger.Debugf("Failed to close response body: %v", err)
+			}
+		}()
+
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
+	}
+
+	return false
 }
 
 // checkDatabaseHealth checks database connectivity and returns status

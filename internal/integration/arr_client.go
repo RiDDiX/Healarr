@@ -1339,7 +1339,13 @@ func (c *HTTPArrClient) CheckInstanceHealth(instanceID int64) error {
 		return err
 	}
 
-	resp, err := c.doRequest(instance, "GET", "/api/v3/system/status", nil)
+	// Use correct API version based on instance type
+	endpoint := "/api/v3/system/status"
+	if isAudioType(instance) {
+		endpoint = "/api/v1/system/status"
+	}
+
+	resp, err := c.doRequest(instance, "GET", endpoint, nil)
 	if err != nil {
 		return err
 	}

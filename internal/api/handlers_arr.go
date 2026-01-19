@@ -257,43 +257,53 @@ func (s *RESTServer) testArrConnection(c *gin.Context) {
 		baseURL = baseURL[:len(baseURL)-1]
 	}
 
-	targetURL := fmt.Sprintf("%s/api/v3/system/status", baseURL)
-	logger.Debugf("Testing connection to: %s", targetURL)
+	// Try API v3 first (Sonarr, Radarr, Whisparr), then v1 (Lidarr)
+	apiVersions := []string{"/api/v3/system/status", "/api/v1/system/status"}
+	var lastErr error
+	var lastStatus int
 
-	httpReq, err := http.NewRequest("GET", targetURL, nil) // #nosec G107 -- URL is validated above
-	if err != nil {
+	for _, apiPath := range apiVersions {
+		targetURL := fmt.Sprintf("%s%s", baseURL, apiPath)
+		logger.Debugf("Testing connection to: %s", targetURL)
+
+		httpReq, err := http.NewRequest("GET", targetURL, nil) // #nosec G107 -- URL is validated above
+		if err != nil {
+			lastErr = fmt.Errorf("failed to create request: %v", err)
+			continue
+		}
+		httpReq.Header.Set("X-Api-Key", req.APIKey)
+
+		resp, err := client.Do(httpReq)
+		if err != nil {
+			logger.Debugf("Connection test failed for %s: %v", apiPath, err)
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			logger.Debugf("Connection test successful for %s", baseURL)
+			c.JSON(http.StatusOK, gin.H{
+				"success": true,
+				"message": "Connection successful",
+			})
+			return
+		}
+		lastStatus = resp.StatusCode
+		logger.Debugf("Connection test returned status %d for %s", resp.StatusCode, apiPath)
+	}
+
+	// All API versions failed
+	if lastErr != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"error":   fmt.Sprintf("Failed to create request: %v", err),
+			"error":   fmt.Sprintf("Connection failed: %v", lastErr),
 		})
 		return
 	}
-	httpReq.Header.Set("X-Api-Key", req.APIKey)
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		logger.Debugf("Connection test failed: %v", err)
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   fmt.Sprintf("Connection failed: %v", err),
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		logger.Debugf("Connection test returned status: %d", resp.StatusCode)
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   fmt.Sprintf("Server returned status %d", resp.StatusCode),
-		})
-		return
-	}
-
-	logger.Debugf("Connection test successful for %s", baseURL)
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Connection successful",
+		"success": false,
+		"error":   fmt.Sprintf("Server returned status %d", lastStatus),
 	})
 }
 
