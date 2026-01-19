@@ -4,6 +4,9 @@
 -- SQLite doesn't support ALTER TABLE to modify CHECK constraints
 -- We need to recreate the table with the new constraint
 
+-- Disable foreign key checks for this migration
+PRAGMA foreign_keys = OFF;
+
 -- Step 1: Create temporary table with new constraint
 CREATE TABLE arr_instances_new (
     id INTEGER PRIMARY KEY,
@@ -26,4 +29,5 @@ DROP TABLE arr_instances;
 -- Step 4: Rename new table to original name
 ALTER TABLE arr_instances_new RENAME TO arr_instances;
 
--- Step 5: Recreate indexes if any existed (none in original schema)
+-- Re-enable foreign key checks
+PRAGMA foreign_keys = ON;
