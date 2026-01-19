@@ -250,11 +250,12 @@ const ArrServersSection = () => {
                                             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Type</label>
                                             <select
                                                 value={newArr.type || 'sonarr'}
-                                                onChange={e => setNewArr({ ...newArr, type: e.target.value as 'sonarr' | 'radarr' | 'whisparr-v2' | 'whisparr-v3' })}
+                                                onChange={e => setNewArr({ ...newArr, type: e.target.value as 'sonarr' | 'radarr' | 'whisparr-v2' | 'whisparr-v3' | 'lidarr' })}
                                                 className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
                                             >
                                                 <option value="sonarr">Sonarr</option>
                                                 <option value="radarr">Radarr</option>
+                                                <option value="lidarr">Lidarr</option>
                                                 <option value="whisparr-v2">Whisparr v2 (Sonarr-based)</option>
                                                 <option value="whisparr-v3">Whisparr v3 (Radarr-based)</option>
                                             </select>
@@ -372,6 +373,7 @@ const ArrServersSection = () => {
                                                     "px-2 py-1 rounded text-xs font-medium",
                                                     arr.type === 'sonarr' ? "bg-purple-500/10 text-purple-400" :
                                                     arr.type === 'radarr' ? "bg-yellow-500/10 text-yellow-400" :
+                                                    arr.type === 'lidarr' ? "bg-green-500/10 text-green-400" :
                                                     arr.type === 'whisparr-v2' ? "bg-pink-500/10 text-pink-400" :
                                                     "bg-pink-500/10 text-pink-300"
                                                 )}>

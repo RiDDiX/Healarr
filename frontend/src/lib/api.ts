@@ -210,7 +210,7 @@ export const downloadLogs = async () => {
 export interface ArrInstance {
     id: number;
     name: string;
-    type: 'sonarr' | 'radarr' | 'whisparr-v2' | 'whisparr-v3';
+    type: 'sonarr' | 'radarr' | 'whisparr-v2' | 'whisparr-v3' | 'lidarr';
     url: string;
     api_key: string;
     enabled: boolean;

@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Lossless formats: FLAC, ALAC, WAV, AIFF, APE, WavPack, TTA, DSD, DSF, DFF
   - Lossy formats: MP3, AAC, M4A, OGG, OPUS, WMA, Musepack, MP2
   - Other formats: M4B (audiobooks), AC3, DTS, EAC3, MKA, Speex, CAF, AU
+- **Lidarr Integration**: Full support for Lidarr music library manager
+  - Configure Lidarr instances alongside Sonarr/Radarr
+  - Automatic re-download of corrupted audio files via Lidarr API
+  - Album and artist search commands for remediation
+  - Track file deletion and replacement workflow
 - **Media Type Tracking**: Corruptions now tracked separately by media type (video/audio)
   - New `media_type` field in corruption events and database
   - Dashboard shows "Media Type Breakdown" section when audio corruptions exist
@@ -23,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Database migration 005 adds `media_type` column to `corruption_summary` table
+- Database migration 006 adds `lidarr` to arr_instances type constraint
 - Scanner now distinguishes between video and audio files with `getMediaType()`
 - API `/stats/dashboard` returns `video_stats` and `audio_stats` objects
 

@@ -27,6 +27,7 @@ const (
 	ArrTypeRadarr     = "radarr"
 	ArrTypeWhisparrV2 = "whisparr-v2"
 	ArrTypeWhisparrV3 = "whisparr-v3"
+	ArrTypeLidarr     = "lidarr"
 )
 
 // RateLimiter implements a token bucket rate limiter for API calls
@@ -572,6 +573,19 @@ func isSeriesType(instance *ArrInstance) bool {
 	return instance.Type == ArrTypeSonarr || instance.Type == ArrTypeWhisparrV2
 }
 
+// isAudioType returns true if the instance handles audio/music (Lidarr)
+func isAudioType(instance *ArrInstance) bool {
+	return instance.Type == ArrTypeLidarr
+}
+
+// getAPIVersion returns the API version prefix for the instance type
+func getAPIVersion(instance *ArrInstance) string {
+	if isAudioType(instance) {
+		return "/api/v1" // Lidarr uses API v1
+	}
+	return "/api/v3" // Sonarr, Radarr, Whisparr use API v3
+}
+
 // genericFile represents a file from the arr API with minimal fields
 type genericFile struct {
 	ID   int64  `json:"id"`
@@ -583,6 +597,8 @@ func (c *HTTPArrClient) getFilesForMedia(instance *ArrInstance, mediaID int64) (
 	var endpoint string
 	if isMovieType(instance) {
 		endpoint = fmt.Sprintf("/api/v3/moviefile?movieId=%d", mediaID)
+	} else if isAudioType(instance) {
+		endpoint = fmt.Sprintf("/api/v1/trackfile?artistId=%d", mediaID)
 	} else {
 		endpoint = fmt.Sprintf("/api/v3/episodefile?seriesId=%d", mediaID)
 	}
@@ -648,6 +664,8 @@ func (c *HTTPArrClient) deleteFileByID(instance *ArrInstance, fileID int64) erro
 	var endpoint string
 	if isMovieType(instance) {
 		endpoint = fmt.Sprintf("/api/v3/moviefile/%d", fileID)
+	} else if isAudioType(instance) {
+		endpoint = fmt.Sprintf("/api/v1/trackfile/%d", fileID)
 	} else {
 		endpoint = fmt.Sprintf("/api/v3/episodefile/%d", fileID)
 	}
@@ -1016,6 +1034,26 @@ func buildSeriesSearchPayload(mediaID int64, episodeIDs []int64) map[string]inte
 	}
 }
 
+// buildAlbumSearchPayload creates the payload for Lidarr album search
+func buildAlbumSearchPayload(albumIDs []int64) map[string]interface{} {
+	if len(albumIDs) > 0 {
+		return map[string]interface{}{
+			"name":     "AlbumSearch",
+			"albumIds": albumIDs,
+		}
+	}
+	// Fallback to artist search if no album IDs
+	return nil
+}
+
+// buildArtistSearchPayload creates the payload for Lidarr artist search (missing albums)
+func buildArtistSearchPayload(artistID int64) map[string]interface{} {
+	return map[string]interface{}{
+		"name":     "MissingAlbumSearch",
+		"artistId": int(artistID),
+	}
+}
+
 func (c *HTTPArrClient) TriggerSearch(mediaID int64, path string, episodeIDs []int64) error {
 	instance, err := c.getInstanceForPath(path)
 	if err != nil {
@@ -1024,13 +1062,25 @@ func (c *HTTPArrClient) TriggerSearch(mediaID int64, path string, episodeIDs []i
 
 	logger.Infof("Triggering search for media ID %d on %s", mediaID, instance.Type)
 	var payload map[string]interface{}
+	var commandEndpoint string
+
 	if isMovieType(instance) {
 		payload = buildMovieSearchPayload(mediaID)
+		commandEndpoint = "/api/v3/command"
+	} else if isAudioType(instance) {
+		// For Lidarr, episodeIDs are repurposed as albumIDs
+		payload = buildAlbumSearchPayload(episodeIDs)
+		if payload == nil {
+			// No album IDs, search for missing albums for this artist
+			payload = buildArtistSearchPayload(mediaID)
+		}
+		commandEndpoint = "/api/v1/command"
 	} else {
 		payload = buildSeriesSearchPayload(mediaID, episodeIDs)
+		commandEndpoint = "/api/v3/command"
 	}
 
-	resp, err := c.doRequest(instance, "POST", "/api/v3/command", payload)
+	resp, err := c.doRequest(instance, "POST", commandEndpoint, payload)
 	if err != nil {
 		return err
 	}
@@ -1543,6 +1593,7 @@ func (c *HTTPArrClient) RefreshMonitoredDownloadsByPath(arrPath string) error {
 // GetMediaDetails implements ArrClient interface - fetches friendly media titles for display.
 // For movies: returns title and year
 // For TV: returns series name, year, and episode details
+// For audio: returns artist name
 // Returns nil (not error) if media details can't be fetched, allowing graceful degradation.
 func (c *HTTPArrClient) GetMediaDetails(mediaID int64, arrPath string) (*MediaDetails, error) {
 	instance, err := c.getInstanceForPath(arrPath)
@@ -1555,6 +1606,8 @@ func (c *HTTPArrClient) GetMediaDetails(mediaID int64, arrPath string) (*MediaDe
 		return c.getMovieDetails(instance, mediaID)
 	case ArrTypeSonarr, ArrTypeWhisparrV2:
 		return c.getSeriesDetails(instance, mediaID)
+	case ArrTypeLidarr:
+		return c.getArtistDetails(instance, mediaID)
 	default:
 		return nil, nil
 	}
@@ -1622,6 +1675,38 @@ func (c *HTTPArrClient) getSeriesDetails(instance *ArrInstance, seriesID int64) 
 		Title:        series.Title,
 		Year:         series.Year,
 		MediaType:    "series",
+		ArrType:      instance.Type,
+		InstanceName: instance.Name,
+	}, nil
+}
+
+// getArtistDetails fetches artist name from Lidarr
+func (c *HTTPArrClient) getArtistDetails(instance *ArrInstance, artistID int64) (*MediaDetails, error) {
+	endpoint := fmt.Sprintf("/api/v1/artist/%d", artistID)
+	resp, err := c.doRequest(instance, "GET", endpoint, nil)
+	if err != nil {
+		logger.Debugf("Failed to fetch artist details for ID %d: %v", artistID, err)
+		return nil, nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		logger.Debugf("Artist %d not found in %s (status: %s)", artistID, instance.Name, resp.Status)
+		return nil, nil
+	}
+
+	var artist struct {
+		ArtistName string `json:"artistName"`
+		Path       string `json:"path"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&artist); err != nil {
+		logger.Debugf("Failed to decode artist details for ID %d: %v", artistID, err)
+		return nil, nil
+	}
+
+	return &MediaDetails{
+		Title:        artist.ArtistName,
+		MediaType:    "artist",
 		ArrType:      instance.Type,
 		InstanceName: instance.Name,
 	}, nil
