@@ -65,6 +65,12 @@ func NewRepository(dbPath string) (*Repository, error) {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}
 
+	// Enable foreign key constraints AFTER migrations
+	// This allows migrations to recreate tables with foreign key references
+	if _, err := db.Exec("PRAGMA foreign_keys=ON"); err != nil {
+		return nil, fmt.Errorf("failed to enable foreign keys: %w", err)
+	}
+
 	// Recreate views to ensure they match latest schema
 	if err := repo.recreateViews(); err != nil {
 		logger.Errorf("Warning: failed to recreate views: %v", err)
@@ -89,11 +95,10 @@ func NewRepository(dbPath string) (*Repository, error) {
 // configureSQLite sets optimal SQLite pragmas for reliability and performance
 func configureSQLite(db *sql.DB) error {
 	// Critical pragmas that must succeed for proper database operation
+	// Note: foreign_keys is enabled AFTER migrations to allow table recreation
 	criticalPragmas := []string{
 		// WAL mode for better concurrency and crash recovery
 		"PRAGMA journal_mode=WAL",
-		// Enable foreign key constraints
-		"PRAGMA foreign_keys=ON",
 		// Busy timeout of 30 seconds to handle concurrent access during heavy scans
 		"PRAGMA busy_timeout=30000",
 	}

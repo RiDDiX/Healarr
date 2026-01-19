@@ -3,9 +3,7 @@
 
 -- SQLite doesn't support ALTER TABLE to modify CHECK constraints
 -- We need to recreate the table with the new constraint
-
--- Disable foreign key checks for this migration
-PRAGMA foreign_keys = OFF;
+-- Note: Foreign keys are disabled during migrations (enabled after in repository.go)
 
 -- Step 1: Create temporary table with new constraint
 CREATE TABLE arr_instances_new (
@@ -28,6 +26,3 @@ DROP TABLE arr_instances;
 
 -- Step 4: Rename new table to original name
 ALTER TABLE arr_instances_new RENAME TO arr_instances;
-
--- Re-enable foreign key checks
-PRAGMA foreign_keys = ON;
