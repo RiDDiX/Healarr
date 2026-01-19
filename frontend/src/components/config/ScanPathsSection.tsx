@@ -409,10 +409,10 @@ const ScanPathsSection = ({ onScrollToDetectionTools }: ScanPathsSectionProps) =
                                             </label>
                                             <div className="space-y-2">
                                                 {[
-                                                    { value: 'ffprobe', label: 'ffprobe', desc: 'Truncated files, missing streams', badge: 'recommended' },
-                                                    { value: 'mediainfo', label: 'mediainfo', desc: 'Metadata and track info problems', badge: null },
-                                                    { value: 'handbrake', label: 'HandBrakeCLI', desc: 'Files that won\'t transcode', badge: null },
-                                                    { value: 'zero_byte', label: 'stat', desc: 'Empty files only', badge: null },
+                                                    { value: 'ffprobe', label: 'ffprobe', desc: 'Video & Audio: Truncated files, missing streams', badge: 'recommended' },
+                                                    { value: 'mediainfo', label: 'mediainfo', desc: 'Video & Audio: Metadata and track info problems', badge: null },
+                                                    { value: 'handbrake', label: 'HandBrakeCLI', desc: 'Video only: Files that won\'t transcode', badge: null },
+                                                    { value: 'zero_byte', label: 'stat', desc: 'Video & Audio: Empty files only', badge: null },
                                                 ].map((method) => {
                                                     const available = isToolAvailable(method.value);
                                                     const isSelected = (newPath.detection_method || 'ffprobe') === method.value;
