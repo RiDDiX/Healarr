@@ -1,3 +1,15 @@
+// Statistics for a specific media type (video or audio)
+export interface MediaTypeStats {
+    total_corruptions: number;
+    pending_corruptions: number;
+    resolved_corruptions: number;
+    orphaned_corruptions: number;
+    in_progress_corruptions: number;
+    failed_corruptions: number;
+    corruptions_today: number;
+    success_rate: number;
+}
+
 export interface DashboardStats {
     total_corruptions: number;
     active_corruptions: number;      // Deprecated: all non-resolved/non-orphaned
@@ -18,6 +30,9 @@ export interface DashboardStats {
     last_scan_time?: string;         // ISO timestamp of most recent completed scan
     last_scan_path?: string;         // Path that was scanned
     last_scan_id?: number;           // ID for linking to scan details
+    // Media type breakdown
+    video_stats?: MediaTypeStats;    // Video file corruption stats
+    audio_stats?: MediaTypeStats;    // Audio/music file corruption stats
 }
 
 export interface Corruption {

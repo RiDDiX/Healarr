@@ -10,6 +10,18 @@ import (
 )
 
 func (s *RESTServer) getDashboardStats(c *gin.Context) {
+	// MediaTypeStats holds corruption statistics for a specific media type
+	type MediaTypeStats struct {
+		TotalCorruptions      int `json:"total_corruptions"`
+		PendingCorruptions    int `json:"pending_corruptions"`
+		ResolvedCorruptions   int `json:"resolved_corruptions"`
+		OrphanedCorruptions   int `json:"orphaned_corruptions"`
+		InProgressCorruptions int `json:"in_progress_corruptions"`
+		FailedCorruptions     int `json:"failed_corruptions"`
+		CorruptionsToday      int `json:"corruptions_today"`
+		SuccessRate           int `json:"success_rate"`
+	}
+
 	var stats struct {
 		TotalCorruptions              int      `json:"total_corruptions"`
 		PendingCorruptions            int      `json:"pending_corruptions"` // Just CorruptionDetected state
@@ -30,6 +42,9 @@ func (s *RESTServer) getDashboardStats(c *gin.Context) {
 		LastScanPath                  *string  `json:"last_scan_path,omitempty"` // Path that was scanned
 		LastScanID                    *int     `json:"last_scan_id,omitempty"`   // ID for linking to scan details
 		Warnings                      []string `json:"warnings,omitempty"`       // Query failures (partial results returned)
+		// Media type breakdown
+		VideoStats *MediaTypeStats `json:"video_stats,omitempty"`
+		AudioStats *MediaTypeStats `json:"audio_stats,omitempty"`
 	}
 
 	var warnings []string
@@ -124,6 +139,68 @@ func (s *RESTServer) getDashboardStats(c *gin.Context) {
 		stats.SuccessRate = 0
 	} else {
 		stats.SuccessRate = 100
+	}
+
+	// Query 5: Media type breakdown (video vs audio)
+	// This uses the corruption_summary table which has the media_type column
+	videoStats := &MediaTypeStats{}
+	audioStats := &MediaTypeStats{}
+
+	// Try to get video stats
+	if err := s.db.QueryRow(`
+		SELECT
+			COUNT(DISTINCT CASE WHEN current_state = 'VerificationSuccess' THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state = 'MaxRetriesReached' THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state IN ('SearchStarted', 'SearchQueued', 'RemediationQueued',
+				'DownloadStarted', 'DownloadProgress', 'SearchCompleted', 'DeletionCompleted', 'FileDetected')
+				THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state = 'CorruptionDetected' THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state LIKE '%Failed' AND current_state != 'MaxRetriesReached' THEN corruption_id END)
+		FROM corruption_summary
+		WHERE COALESCE(media_type, 'video') = 'video'
+	`).Scan(&videoStats.ResolvedCorruptions, &videoStats.OrphanedCorruptions, &videoStats.InProgressCorruptions,
+		&videoStats.PendingCorruptions, &videoStats.FailedCorruptions); err != nil {
+		logger.Debugf("Failed to query video stats: %v", err)
+	} else {
+		videoStats.TotalCorruptions = videoStats.PendingCorruptions + videoStats.ResolvedCorruptions +
+			videoStats.OrphanedCorruptions + videoStats.InProgressCorruptions + videoStats.FailedCorruptions
+		videoAttempts := videoStats.ResolvedCorruptions + videoStats.OrphanedCorruptions
+		if videoAttempts > 0 {
+			videoStats.SuccessRate = (videoStats.ResolvedCorruptions * 100) / videoAttempts
+		} else {
+			videoStats.SuccessRate = 100
+		}
+		stats.VideoStats = videoStats
+	}
+
+	// Try to get audio stats
+	if err := s.db.QueryRow(`
+		SELECT
+			COUNT(DISTINCT CASE WHEN current_state = 'VerificationSuccess' THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state = 'MaxRetriesReached' THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state IN ('SearchStarted', 'SearchQueued', 'RemediationQueued',
+				'DownloadStarted', 'DownloadProgress', 'SearchCompleted', 'DeletionCompleted', 'FileDetected')
+				THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state = 'CorruptionDetected' THEN corruption_id END),
+			COUNT(DISTINCT CASE WHEN current_state LIKE '%Failed' AND current_state != 'MaxRetriesReached' THEN corruption_id END)
+		FROM corruption_summary
+		WHERE media_type = 'audio'
+	`).Scan(&audioStats.ResolvedCorruptions, &audioStats.OrphanedCorruptions, &audioStats.InProgressCorruptions,
+		&audioStats.PendingCorruptions, &audioStats.FailedCorruptions); err != nil {
+		logger.Debugf("Failed to query audio stats: %v", err)
+	} else {
+		audioStats.TotalCorruptions = audioStats.PendingCorruptions + audioStats.ResolvedCorruptions +
+			audioStats.OrphanedCorruptions + audioStats.InProgressCorruptions + audioStats.FailedCorruptions
+		audioAttempts := audioStats.ResolvedCorruptions + audioStats.OrphanedCorruptions
+		if audioAttempts > 0 {
+			audioStats.SuccessRate = (audioStats.ResolvedCorruptions * 100) / audioAttempts
+		} else {
+			audioStats.SuccessRate = 100
+		}
+		// Only include audio stats if there are any audio corruptions
+		if audioStats.TotalCorruptions > 0 {
+			stats.AudioStats = audioStats
+		}
 	}
 
 	stats.Warnings = warnings

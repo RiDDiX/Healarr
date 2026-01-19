@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-19
+
+### Added
+- **Audio/Music File Support**: Healarr now validates audio files in addition to video
+  - Supports 38+ audio formats: FLAC, MP3, WAV, AAC, OGG, OPUS, WMA, APE, and more
+  - Lossless formats: FLAC, ALAC, WAV, AIFF, APE, WavPack, TTA, DSD, DSF, DFF
+  - Lossy formats: MP3, AAC, M4A, OGG, OPUS, WMA, Musepack, MP2
+  - Other formats: M4B (audiobooks), AC3, DTS, EAC3, MKA, Speex, CAF, AU
+- **Media Type Tracking**: Corruptions now tracked separately by media type (video/audio)
+  - New `media_type` field in corruption events and database
+  - Dashboard shows "Media Type Breakdown" section when audio corruptions exist
+  - Separate statistics for video and audio file health
+- **Dashboard UI Enhancement**: New visual breakdown of video vs. audio corruptions
+  - Film icon for video files, Music icon for audio files
+  - Shows total, resolved, and in-progress counts per media type
+
+### Changed
+- Database migration 005 adds `media_type` column to `corruption_summary` table
+- Scanner now distinguishes between video and audio files with `getMediaType()`
+- API `/stats/dashboard` returns `video_stats` and `audio_stats` objects
+
 ## [1.1.33] - 2026-01-13
 
 ### Added

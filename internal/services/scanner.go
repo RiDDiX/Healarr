@@ -24,8 +24,8 @@ import (
 // scannerQueryTimeout is the maximum time for database queries in scanner service.
 const scannerQueryTimeout = 10 * time.Second
 
-// Default media file extensions to scan
-var defaultMediaExtensions = map[string]bool{
+// Default video file extensions to scan
+var defaultVideoExtensions = map[string]bool{
 	".mkv":  true,
 	".mp4":  true,
 	".avi":  true,
@@ -45,7 +45,93 @@ var defaultMediaExtensions = map[string]bool{
 	".xvid": true,
 }
 
-// isMediaFile checks if a file has a supported media extension
+// Default audio/music file extensions to scan
+var defaultAudioExtensions = map[string]bool{
+	// Lossless formats
+	".flac": true,
+	".alac": true,
+	".wav":  true,
+	".aiff": true,
+	".aif":  true,
+	".ape":  true,
+	".wv":   true, // WavPack
+	".tta":  true, // True Audio
+	".dsd":  true,
+	".dsf":  true,
+	".dff":  true,
+	// Lossy formats
+	".mp3":  true,
+	".aac":  true,
+	".m4a":  true,
+	".ogg":  true,
+	".oga":  true,
+	".opus": true,
+	".wma":  true,
+	".mpc":  true, // Musepack
+	".mp2":  true,
+	// Other common formats
+	".m4b":  true, // Audiobooks
+	".m4p":  true,
+	".ra":   true,  // RealAudio
+	".ram":  true,
+	".mid":  true,
+	".midi": true,
+	".ac3":  true,
+	".dts":  true,
+	".eac3": true,
+	".mka":  true, // Matroska Audio
+	".spx":  true, // Speex
+	".caf":  true, // Core Audio Format
+	".au":   true,  // Sun/NeXT audio
+	".snd":  true,
+	".aifc": true,
+}
+
+// defaultMediaExtensions combines video and audio for backwards compatibility
+var defaultMediaExtensions = func() map[string]bool {
+	combined := make(map[string]bool)
+	for ext := range defaultVideoExtensions {
+		combined[ext] = true
+	}
+	for ext := range defaultAudioExtensions {
+		combined[ext] = true
+	}
+	return combined
+}()
+
+// MediaType represents the type of media file
+type MediaType string
+
+const (
+	MediaTypeVideo   MediaType = "video"
+	MediaTypeAudio   MediaType = "audio"
+	MediaTypeUnknown MediaType = "unknown"
+)
+
+// isVideoFile checks if a file has a supported video extension
+func isVideoFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return defaultVideoExtensions[ext]
+}
+
+// isAudioFile checks if a file has a supported audio/music extension
+func isAudioFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return defaultAudioExtensions[ext]
+}
+
+// getMediaType returns the media type of a file based on its extension
+func getMediaType(path string) MediaType {
+	if isVideoFile(path) {
+		return MediaTypeVideo
+	}
+	if isAudioFile(path) {
+		return MediaTypeAudio
+	}
+	return MediaTypeUnknown
+}
+
+// isMediaFile checks if a file has a supported media extension (video or audio)
 func isMediaFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	return defaultMediaExtensions[ext]
@@ -567,6 +653,7 @@ func (s *ScannerService) ScanFile(localPath string) error {
 				"file_size":       fileSize,
 				"corruption_type": healthErr.Type,
 				"error_details":   healthErr.Message,
+				"media_type":      string(getMediaType(localPath)),
 				"source":          "webhook",
 				"auto_remediate":  autoRemediate,
 				"dry_run":         dryRun,
@@ -1129,6 +1216,7 @@ func (s *ScannerService) handleTrueCorruption(ctx context.Context, progress *Sca
 			"path_id":         sfc.pathID,
 			"corruption_type": healthErr.Type,
 			"error_details":   healthErr.Message,
+			"media_type":      string(getMediaType(sfc.filePath)),
 			"auto_remediate":  sfc.autoRemediate,
 			"dry_run":         sfc.dryRun,
 			"batch_throttled": progress.isThrottled,
@@ -1886,6 +1974,7 @@ func (s *ScannerService) emitRescanCorruption(f pendingRescanFile, healthErr *in
 			"path_id":         f.PathID,
 			"corruption_type": healthErr.Type,
 			"error_details":   healthErr.Message,
+			"media_type":      string(getMediaType(f.FilePath)),
 			"source":          "rescan_worker",
 			"auto_remediate":  autoRemediate,
 			"dry_run":         dryRun,

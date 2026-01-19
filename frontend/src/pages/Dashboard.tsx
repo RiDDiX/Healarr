@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldCheck, AlertOctagon, Loader2, X, Clock, AlertTriangle, EyeOff, CheckCircle2, FileSearch, TrendingUp, HandMetal, Play, ChevronDown, ScanSearch, PlayCircle, AlertCircle, ArrowRight } from 'lucide-react';
+import { ShieldCheck, AlertOctagon, Loader2, X, Clock, AlertTriangle, EyeOff, CheckCircle2, FileSearch, TrendingUp, HandMetal, Play, ChevronDown, ScanSearch, PlayCircle, AlertCircle, ArrowRight, Music, Film } from 'lucide-react';
 import clsx from 'clsx';
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardStats, getActiveScans, cancelScan, getScanPaths, triggerScan, triggerScanAll, getPathHealth, type ScanProgress, type ScanPath } from '../lib/api';
@@ -628,6 +628,75 @@ const Dashboard = () => {
                     />
                 </div>
             </motion.div>
+
+            {/* Media Type Breakdown - Only show if audio stats exist */}
+            {stats?.audio_stats && (
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.12 }}
+                    className="rounded-2xl border border-slate-200 dark:border-slate-800/50 bg-white/80 dark:bg-slate-900/40 backdrop-blur-xl p-6"
+                >
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Media Type Breakdown</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Video Stats */}
+                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/30">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                                    <Film className="w-5 h-5 text-blue-500" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-slate-900 dark:text-white">Video Files</h3>
+                                    <p className="text-xs text-slate-500">Movies, TV Shows, etc.</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 text-center">
+                                <div>
+                                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.video_stats?.total_corruptions ?? 0}</p>
+                                    <p className="text-xs text-slate-500">Total</p>
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-emerald-500">{stats.video_stats?.resolved_corruptions ?? 0}</p>
+                                    <p className="text-xs text-slate-500">Resolved</p>
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-blue-500">{stats.video_stats?.in_progress_corruptions ?? 0}</p>
+                                    <p className="text-xs text-slate-500">In Progress</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Audio Stats */}
+                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-700/30">
+                            <div className="flex items-center gap-3 mb-3">
+                                <div className="p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+                                    <Music className="w-5 h-5 text-purple-500" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-slate-900 dark:text-white">Audio/Music Files</h3>
+                                    <p className="text-xs text-slate-500">FLAC, MP3, WAV, etc.</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-3 text-center">
+                                <div>
+                                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.audio_stats?.total_corruptions ?? 0}</p>
+                                    <p className="text-xs text-slate-500">Total</p>
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-emerald-500">{stats.audio_stats?.resolved_corruptions ?? 0}</p>
+                                    <p className="text-xs text-slate-500">Resolved</p>
+                                </div>
+                                <div>
+                                    <p className="text-2xl font-bold text-purple-500">{stats.audio_stats?.in_progress_corruptions ?? 0}</p>
+                                    <p className="text-xs text-slate-500">In Progress</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Main Stats Row */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

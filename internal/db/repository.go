@@ -222,6 +222,7 @@ func (r *Repository) createViewsWithSummaryTable() error {
 			path_id,
 			last_error,
 			corruption_type,
+			media_type,
 			detected_at,
 			last_updated_at
 		FROM corruption_summary
