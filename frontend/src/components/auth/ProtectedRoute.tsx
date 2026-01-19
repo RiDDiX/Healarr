@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { getAuthStatus } from '../../lib/api';
 import { useWebSocket } from '../../contexts/WebSocketProvider';
 
@@ -11,7 +11,6 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     const [isChecking, setIsChecking] = useState(true);
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [needsSetup, setNeedsSetup] = useState(false);
-    const location = useLocation();
     const { reconnect } = useWebSocket();
 
     useEffect(() => {
@@ -56,7 +55,10 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
         };
 
         checkAuth();
-    }, [location.pathname, reconnect]);
+        // Only check auth on initial mount, not on every navigation
+        // Navigation within the app doesn't need re-authentication
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     if (isChecking) {
         return (
@@ -67,8 +69,8 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     }
 
     if (!isAuthenticated) {
-        // Redirect to login, preserving the attempted URL
-        return <Navigate to="/login" state={{ from: location, needsSetup }} replace />;
+        // Redirect to login
+        return <Navigate to="/login" state={{ needsSetup }} replace />;
     }
 
     return <>{children}</>;
