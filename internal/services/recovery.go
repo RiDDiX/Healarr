@@ -393,14 +393,25 @@ func (r *RecoveryService) emitSearchNeeded(item staleItem) string {
 		return r.emitRetryScheduled(item)
 	}
 
-	// Extract episode IDs from metadata if available
+	// Extract episode IDs or album IDs from metadata if available
 	var episodeIDs []int64
 	if item.Metadata != nil {
 		if metadataInner, ok := item.Metadata["metadata"].(map[string]interface{}); ok {
-			if eps, ok := metadataInner["episodeIds"].([]interface{}); ok {
+			// Try episode_ids first (Sonarr/Whisparr)
+			if eps, ok := metadataInner["episode_ids"].([]interface{}); ok {
 				for _, ep := range eps {
 					if epID, ok := ep.(float64); ok {
 						episodeIDs = append(episodeIDs, int64(epID))
+					}
+				}
+			}
+			// Try album_ids (Lidarr) if no episode_ids found
+			if len(episodeIDs) == 0 {
+				if albums, ok := metadataInner["album_ids"].([]interface{}); ok {
+					for _, album := range albums {
+						if albumID, ok := album.(float64); ok {
+							episodeIDs = append(episodeIDs, int64(albumID))
+						}
 					}
 				}
 			}

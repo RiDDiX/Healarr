@@ -659,6 +659,32 @@ func (c *HTTPArrClient) collectEpisodeMetadata(instance *ArrInstance, mediaID, f
 	return episodeIDs
 }
 
+// collectAlbumMetadata fetches album IDs for a given track file ID in Lidarr
+func (c *HTTPArrClient) collectAlbumMetadata(instance *ArrInstance, artistID, trackFileID int64) []int64 {
+	// Get track file details to find album ID
+	trackEndpoint := fmt.Sprintf("/api/v1/trackfile/%d", trackFileID)
+	trackResp, err := c.doRequest(instance, "GET", trackEndpoint, nil)
+	if err != nil || trackResp.StatusCode != http.StatusOK {
+		logger.Debugf("Failed to get track file %d: status=%v err=%v", trackFileID, trackResp.StatusCode, err)
+		return nil
+	}
+	defer trackResp.Body.Close()
+
+	type TrackFile struct {
+		AlbumID int64 `json:"albumId"`
+	}
+	var trackFile TrackFile
+	if err := json.NewDecoder(trackResp.Body).Decode(&trackFile); err != nil {
+		logger.Debugf("Failed to decode track file %d: %v", trackFileID, err)
+		return nil
+	}
+
+	if trackFile.AlbumID > 0 {
+		return []int64{trackFile.AlbumID}
+	}
+	return nil
+}
+
 // deleteFileByID deletes a file by its ID from the arr instance
 func (c *HTTPArrClient) deleteFileByID(instance *ArrInstance, fileID int64) error {
 	var endpoint string
@@ -721,6 +747,12 @@ func (c *HTTPArrClient) buildDeleteMetadata(instance *ArrInstance, mediaID, file
 	if isSeriesType(instance) {
 		if episodeIDs := c.collectEpisodeMetadata(instance, mediaID, fileID); len(episodeIDs) > 0 {
 			metadata["episode_ids"] = episodeIDs
+		}
+	} else if isAudioType(instance) {
+		// For Lidarr: collect album IDs for targeted album search
+		metadata["artist_id"] = mediaID
+		if albumIDs := c.collectAlbumMetadata(instance, mediaID, fileID); len(albumIDs) > 0 {
+			metadata["album_ids"] = albumIDs
 		}
 	} else {
 		metadata["movie_id"] = mediaID

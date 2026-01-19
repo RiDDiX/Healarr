@@ -456,27 +456,40 @@ func (r *RemediatorService) triggerSearch(corruptionID, filePath, arrPath string
 	}
 }
 
-// extractEpisodeIDs extracts episode IDs from metadata for targeted search
+// extractEpisodeIDs extracts episode IDs (or album IDs for Lidarr) from metadata for targeted search
 func extractEpisodeIDs(metadata map[string]interface{}) []int64 {
-	var episodeIDs []int64
-	episodeIDsRaw, ok := metadata["episode_ids"]
+	// Try episode_ids first (Sonarr/Whisparr)
+	if ids := extractIDsFromKey(metadata, "episode_ids"); len(ids) > 0 {
+		return ids
+	}
+	// Try album_ids (Lidarr)
+	if ids := extractIDsFromKey(metadata, "album_ids"); len(ids) > 0 {
+		return ids
+	}
+	return nil
+}
+
+// extractIDsFromKey extracts int64 IDs from a metadata key
+func extractIDsFromKey(metadata map[string]interface{}, key string) []int64 {
+	var ids []int64
+	idsRaw, ok := metadata[key]
 	if !ok {
-		return episodeIDs
+		return ids
 	}
 
-	switch v := episodeIDsRaw.(type) {
+	switch v := idsRaw.(type) {
 	case []int64:
-		episodeIDs = v
+		ids = v
 	case []interface{}:
 		for _, item := range v {
 			if f, ok := item.(float64); ok {
-				episodeIDs = append(episodeIDs, int64(f))
+				ids = append(ids, int64(f))
 			} else if i, ok := item.(int64); ok {
-				episodeIDs = append(episodeIDs, i)
+				ids = append(ids, i)
 			}
 		}
 	}
-	return episodeIDs
+	return ids
 }
 
 // buildSearchEventData creates the event data map for search events with media details
