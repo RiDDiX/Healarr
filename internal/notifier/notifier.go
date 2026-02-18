@@ -404,6 +404,29 @@ func (n *Notifier) backgroundWorker() {
 	}
 }
 
+// scanNotificationRow scans a notification config from a database row and decrypts/parses JSON fields.
+func (n *Notifier) scanNotificationRow(scanner interface {
+	Scan(dest ...interface{}) error
+}) (*NotificationConfig, error) {
+	var cfg NotificationConfig
+	var configJSON, eventsJSON string
+	if err := scanner.Scan(&cfg.ID, &cfg.Name, &cfg.ProviderType, &configJSON, &eventsJSON, &cfg.Enabled, &cfg.ThrottleSeconds, &cfg.CreatedAt, &cfg.UpdatedAt); err != nil {
+		return nil, err
+	}
+
+	decrypted, err := crypto.Decrypt(configJSON)
+	if err != nil {
+		return nil, fmt.Errorf(logFmtDecryptFailed, cfg.ID, err)
+	}
+	if err := json.Unmarshal([]byte(decrypted), &cfg.Config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config for notification %d: %w", cfg.ID, err)
+	}
+	if json.Unmarshal([]byte(eventsJSON), &cfg.Events) != nil {
+		cfg.Events = []string{}
+	}
+	return &cfg, nil
+}
+
 func (n *Notifier) loadConfigs() error {
 	ctx, cancel := context.WithTimeout(context.Background(), notifierQueryTimeout)
 	defer cancel()
@@ -1082,7 +1105,7 @@ var eventTitles = map[string]string{
 	string(domain.CorruptionIgnored):    "🙈 Corruption Ignored by User",
 }
 
-func (n *Notifier) formatTitle(eventType string, fileName string) string {
+func (n *Notifier) formatTitle(eventType, fileName string) string {
 	// Special case: CorruptionDetected includes filename
 	if eventType == string(domain.CorruptionDetected) {
 		if fileName != "" {

@@ -953,7 +953,7 @@ func TestCheckArrStatus_FileFoundVerified(t *testing.T) {
 
 	// Mock detector that returns healthy
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return true, nil
 		},
 	}
@@ -1003,7 +1003,7 @@ func TestVerifyAndComplete_HealthyFile(t *testing.T) {
 	})
 
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return true, nil // Healthy
 		},
 	}
@@ -1047,7 +1047,7 @@ func TestVerifyAndComplete_CorruptFile(t *testing.T) {
 	})
 
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return false, &integration.HealthCheckError{Message: "video stream corrupt"}
 		},
 	}
@@ -1098,7 +1098,7 @@ func TestVerifyAndComplete_WithPathMapper(t *testing.T) {
 	}
 
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			// Verify the path was mapped
 			if path != "/local/media/test.mkv" {
 				t.Errorf("Expected mapped path /local/media/test.mkv, got %s", path)
@@ -1194,7 +1194,7 @@ func TestRecoverEarlyRemediationState_DeletionStarted_FileHealthy(t *testing.T) 
 
 	// File is healthy - should emit VerificationSuccess
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return true, nil
 		},
 	}
@@ -1241,7 +1241,7 @@ func TestRecoverEarlyRemediationState_DeletionStarted_FileGone(t *testing.T) {
 
 	// File is gone/corrupt - should emit RetryScheduled
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return false, &integration.HealthCheckError{Message: "file not found"}
 		},
 	}
@@ -1899,7 +1899,7 @@ func TestRecoverPostSearchState_FileExistsAndHealthy(t *testing.T) {
 	})
 
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return true, nil
 		},
 	}
@@ -1944,7 +1944,7 @@ func TestRecoverPostSearchState_FileNotFound(t *testing.T) {
 	})
 
 	mockDetector := &testutil.MockHealthChecker{
-		CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+		CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 			return false, &integration.HealthCheckError{Message: "file not found"}
 		},
 	}
@@ -1999,7 +1999,7 @@ func TestRecoverItem_RoutesToCorrectHandler(t *testing.T) {
 			expectedAction: "exhausted", // Routes to recoverPostSearchState
 			setupMock: func() *testutil.MockHealthChecker {
 				return &testutil.MockHealthChecker{
-					CheckFunc: func(path string, mode string) (bool, *integration.HealthCheckError) {
+					CheckFunc: func(path, mode string) (bool, *integration.HealthCheckError) {
 						return false, &integration.HealthCheckError{Message: "file not found"}
 					},
 				}
