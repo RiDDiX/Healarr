@@ -173,23 +173,27 @@ const ScanPathsSection = ({ onScrollToDetectionTools }: ScanPathsSectionProps) =
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (newPath.local_path && newPath.arr_instance_id) {
-            const formData = { ...newPath };
-            if (formData.detection_args && typeof formData.detection_args === 'string') {
-                formData.detection_args = (formData.detection_args as string)
-                    .split(',')
-                    .map(arg => arg.trim())
-                    .filter(arg => arg.length > 0) as unknown as string;
-            }
-
-            if (editingId) {
-                updateMutation.mutate({ id: editingId, data: formData as Omit<ScanPath, 'id'> });
-                setEditingId(null);
-            } else {
-                createMutation.mutate(formData as Omit<ScanPath, 'id'>);
-            }
-            resetForm();
+        if (!newPath.local_path || !newPath.arr_instance_id) {
+            return;
         }
+
+        // Build API payload: convert detection_args from comma-separated string to string[]
+        const { detection_args, ...rest } = newPath;
+        const payload: Record<string, unknown> = { ...rest };
+        if (detection_args && typeof detection_args === 'string') {
+            const args = detection_args.split(',').map(arg => arg.trim()).filter(arg => arg.length > 0);
+            if (args.length > 0) {
+                payload.detection_args = args;
+            }
+        }
+
+        if (editingId) {
+            updateMutation.mutate({ id: editingId, data: payload as Omit<ScanPath, 'id'> });
+            setEditingId(null);
+        } else {
+            createMutation.mutate(payload as Omit<ScanPath, 'id'>);
+        }
+        resetForm();
     };
 
     const handleEdit = (path: ScanPath) => {
