@@ -110,6 +110,7 @@ func NewRESTServer(deps ServerDeps) *RESTServer {
 		// Only set CORS headers if origin is allowed
 		if corsOrigins == "*" {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			c.Writer.Header().Set("Vary", "Origin")
 		} else if origin != "" && allowedOrigins[origin] {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 			c.Writer.Header().Set("Vary", "Origin")
@@ -349,7 +350,7 @@ func (s *RESTServer) setupRoutes() {
 
 		// Onboarding/Setup endpoints (public, for first-time setup wizard)
 		api.GET("/setup/status", s.handleSetupStatus)
-		api.POST("/setup/dismiss", s.handleSetupDismiss)
+		api.POST("/setup/dismiss", SetupLimiter.Middleware(), s.handleSetupDismiss)
 		api.POST("/setup/import", s.handleConfigImportPublic)          // Config import during setup
 		api.POST("/setup/restore", s.handleDatabaseRestorePublic)      // Database restore during setup
 		api.GET("/setup/notification-events", s.getNotificationEvents) // Static event list for wizard
