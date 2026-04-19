@@ -328,10 +328,6 @@ func (s *RESTServer) setupRoutes() {
 	cfg := config.Get()
 	basePath := cfg.BasePath
 
-	// Prometheus metrics endpoint at root level (standard convention, not behind base path)
-	// This makes it easy for Prometheus to discover and scrape without knowing the base path
-	s.router.GET("/metrics", gin.WrapH(s.metrics.Handler()))
-
 	// Create a group for the base path (or use root if basePath is "/")
 	var base *gin.RouterGroup
 	if basePath == "/" {
@@ -355,9 +351,6 @@ func (s *RESTServer) setupRoutes() {
 		// System info endpoint (no authentication required - useful for debugging)
 		api.GET("/system/info", s.handleSystemInfo)
 
-		// Prometheus metrics endpoint (no authentication required for scraping)
-		api.GET("/metrics", gin.WrapH(s.metrics.Handler()))
-
 		// Public auth endpoints with rate limiting
 		api.POST("/auth/setup", SetupLimiter.Middleware(), s.handleAuthSetup)
 		api.POST("/auth/login", LoginLimiter.Middleware(), s.handleLogin)
@@ -376,6 +369,9 @@ func (s *RESTServer) setupRoutes() {
 		protected.Use(s.authMiddleware())
 		protected.Use(APILimiter.Middleware())
 		{
+			// Prometheus metrics endpoint (authenticated — use Bearer token or X-API-Key for scraping)
+			protected.GET("/metrics", gin.WrapH(s.metrics.Handler()))
+
 			// Auth management
 			protected.GET("/auth/key", s.getAPIKey)
 			protected.POST("/auth/regenerate", s.regenerateAPIKey)
