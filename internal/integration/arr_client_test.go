@@ -724,9 +724,41 @@ func TestHTTPArrClient_TriggerSearch_Sonarr_WithEpisodes(t *testing.T) {
 	}
 }
 
-func TestHTTPArrClient_TriggerSearch_Sonarr_NoEpisodes(t *testing.T) {
+func TestHTTPArrClient_TriggerSearch_Sonarr_NoEpisodes_Refused(t *testing.T) {
 	client, db := setupTestClient(t)
 	defer db.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Should never be called — the client should refuse to search.
+		t.Errorf("unexpected request to *arr: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	encryptedKey, _ := crypto.Encrypt("key")
+	db.DB.Exec(`INSERT INTO arr_instances (id, name, type, url, api_key, enabled) VALUES (1, 'Sonarr', 'sonarr', ?, ?, 1)`, server.URL, encryptedKey)
+	db.DB.Exec(`INSERT INTO scan_paths (id, local_path, arr_path, arr_instance_id, auto_remediate, is_4k) VALUES (1, '/local/tv', '/tv', 1, 0, 0)`)
+
+	// With AllowWholeSeriesSearch=false (the default), we should refuse to
+	// trigger MissingEpisodeSearch and return a clear error instead.
+	err := client.TriggerSearch(456, "/tv/Test Show/Season 01/episode.mkv", nil)
+	if err == nil {
+		t.Fatalf("expected error when episode IDs are missing, got nil")
+	}
+	if !strings.Contains(err.Error(), "whole-series fallback") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestHTTPArrClient_TriggerSearch_Sonarr_NoEpisodes_AllowedFallback(t *testing.T) {
+	client, db := setupTestClient(t)
+	defer db.Close()
+
+	// Opt in to the whole-series fallback for this test.
+	cfg := config.Get()
+	originalAllow := cfg.AllowWholeSeriesSearch
+	cfg.AllowWholeSeriesSearch = true
+	t.Cleanup(func() { cfg.AllowWholeSeriesSearch = originalAllow })
 
 	var receivedPayload map[string]interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -743,13 +775,10 @@ func TestHTTPArrClient_TriggerSearch_Sonarr_NoEpisodes(t *testing.T) {
 	db.DB.Exec(`INSERT INTO arr_instances (id, name, type, url, api_key, enabled) VALUES (1, 'Sonarr', 'sonarr', ?, ?, 1)`, server.URL, encryptedKey)
 	db.DB.Exec(`INSERT INTO scan_paths (id, local_path, arr_path, arr_instance_id, auto_remediate, is_4k) VALUES (1, '/local/tv', '/tv', 1, 0, 0)`)
 
-	// No episode IDs - should fallback to MissingEpisodeSearch
 	err := client.TriggerSearch(456, "/tv/Test Show/Season 01/episode.mkv", nil)
 	if err != nil {
 		t.Fatalf("TriggerSearch failed: %v", err)
 	}
-
-	// Verify fallback to MissingEpisodeSearch
 	if receivedPayload["name"] != "MissingEpisodeSearch" {
 		t.Errorf("Expected MissingEpisodeSearch command, got %v", receivedPayload["name"])
 	}
@@ -4690,7 +4719,7 @@ func TestHTTPArrClient_FindMediaByPath_Whisparr(t *testing.T) {
 	}
 }
 
-// Test TriggerSearch for series
+// Test TriggerSearch for series with explicit episode IDs.
 func TestHTTPArrClient_TriggerSearch_Series(t *testing.T) {
 	client, db := setupTestClient(t)
 	defer db.Close()
@@ -4710,7 +4739,7 @@ func TestHTTPArrClient_TriggerSearch_Series(t *testing.T) {
 	db.DB.Exec(`INSERT INTO arr_instances (id, name, type, url, api_key, enabled) VALUES (1, 'Sonarr', 'sonarr', ?, ?, 1)`, server.URL, encryptedKey)
 	db.DB.Exec(`INSERT INTO scan_paths (id, local_path, arr_path, arr_instance_id, auto_remediate, is_4k) VALUES (1, '/local/tv', '/tv', 1, 0, 0)`)
 
-	err := client.TriggerSearch(99, "/tv/Show/episode.mkv", nil)
+	err := client.TriggerSearch(99, "/tv/Show/episode.mkv", []int64{101})
 	if err != nil {
 		t.Fatalf("TriggerSearch failed: %v", err)
 	}

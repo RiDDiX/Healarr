@@ -1046,8 +1046,10 @@ func buildMovieSearchPayload(mediaID int64) map[string]interface{} {
 	}
 }
 
-// buildSeriesSearchPayload creates an EpisodeSearch or MissingEpisodeSearch payload.
-func buildSeriesSearchPayload(mediaID int64, episodeIDs []int64) map[string]interface{} {
+// buildSeriesSearchPayload creates an EpisodeSearch payload for a series.
+// Returns nil when no episode IDs are known and the caller has not opted in to
+// MissingEpisodeSearch; the caller must treat nil as "refuse to search".
+func buildSeriesSearchPayload(mediaID int64, episodeIDs []int64, allowWholeSeries bool) map[string]interface{} {
 	if len(episodeIDs) > 0 {
 		intEpisodeIDs := make([]int, len(episodeIDs))
 		for i, id := range episodeIDs {
@@ -1059,7 +1061,10 @@ func buildSeriesSearchPayload(mediaID int64, episodeIDs []int64) map[string]inte
 			"episodeIds": intEpisodeIDs,
 		}
 	}
-	logger.Errorf("WARNING: No episode IDs provided, falling back to MissingEpisodeSearch for series %d - this may trigger more downloads than expected", mediaID)
+	if !allowWholeSeries {
+		return nil
+	}
+	logger.Warnf("No episode IDs for series %d — falling back to MissingEpisodeSearch (enabled via HEALARR_ALLOW_WHOLE_SERIES_SEARCH); this may trigger more downloads than expected", mediaID)
 	return map[string]interface{}{
 		"name":     "MissingEpisodeSearch",
 		"seriesId": int(mediaID),
@@ -1108,7 +1113,10 @@ func (c *HTTPArrClient) TriggerSearch(mediaID int64, path string, episodeIDs []i
 		}
 		commandEndpoint = "/api/v1/command"
 	} else {
-		payload = buildSeriesSearchPayload(mediaID, episodeIDs)
+		payload = buildSeriesSearchPayload(mediaID, episodeIDs, config.Get().AllowWholeSeriesSearch)
+		if payload == nil {
+			return fmt.Errorf("no episode IDs for series %d — refusing whole-series fallback (set HEALARR_ALLOW_WHOLE_SERIES_SEARCH=true to enable)", mediaID)
+		}
 		commandEndpoint = "/api/v3/command"
 	}
 

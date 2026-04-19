@@ -72,6 +72,12 @@ type Config struct {
 	// Allows short bursts above the RPS limit
 	ArrRateLimitBurst int
 
+	// AllowWholeSeriesSearch controls whether Healarr may fall back to
+	// Sonarr's MissingEpisodeSearch when no specific episode IDs are known
+	// for a series-level remediation. Defaults to false so a single corrupt
+	// file can't trigger re-downloads across the entire series.
+	AllowWholeSeriesSearch bool
+
 	// RetentionDays is the number of days to keep old events and scan history (default: 90)
 	// Set to 0 to disable automatic pruning
 	RetentionDays int
@@ -255,8 +261,9 @@ func Load() *Config {
 		StaleThreshold:       getEnvDurationOrDefault("HEALARR_STALE_THRESHOLD", 24*time.Hour),
 		DefaultMaxRetries:    getEnvIntOrDefault("HEALARR_DEFAULT_MAX_RETRIES", 3),
 		DryRunMode:           getEnvBoolOrDefault("HEALARR_DRY_RUN", false),
-		ArrRateLimitRPS:      getEnvFloatOrDefault("HEALARR_ARR_RATE_LIMIT_RPS", 5.0),
-		ArrRateLimitBurst:    getEnvIntOrDefault("HEALARR_ARR_RATE_LIMIT_BURST", 10),
+		ArrRateLimitRPS:        getEnvFloatOrDefault("HEALARR_ARR_RATE_LIMIT_RPS", 5.0),
+		ArrRateLimitBurst:      getEnvIntOrDefault("HEALARR_ARR_RATE_LIMIT_BURST", 10),
+		AllowWholeSeriesSearch: getEnvBoolOrDefault("HEALARR_ALLOW_WHOLE_SERIES_SEARCH", false),
 		RetentionDays:        getEnvIntOrDefault("HEALARR_RETENTION_DAYS", 90),
 		DataDir:              dataDir,
 		DatabasePath:         dbPath,
