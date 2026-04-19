@@ -5,6 +5,94 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Covers local work plus selective cherry-picks from upstream mescon/Healarr
+(through v1.3.0). Large upstream batches (review-findings wizard decomposition,
+Vitest/MSW test infrastructure) and the dependency bumps were not taken in
+this round.
+
+### Added
+- Detector fallback chain. When the configured detector fails with a
+  recoverable error (binary missing, subprocess crash, timeout) the scanner
+  tries the next method in the chain instead of giving up. ffprobe and
+  MediaInfo fall back to each other by default; HandBrake falls back to
+  ffprobe → MediaInfo. A detector that reports real corruption still wins so
+  a weaker fallback can't hide a bad file.
+- Content analysis detection for black video, frozen frames, and silent
+  audio. Runs after the structural check in thorough mode and flags files
+  where more than 90% of the duration is affected.
+- `HEALARR_TZ` support for the cron scheduler, with `TZ` as a secondary
+  fallback. Invalid values log a warning and fall back to local time.
+- `HEALARR_HSTS=true` opt-in for `Strict-Transport-Security`. Off by default
+  because leaving it on for a plain-HTTP deployment locks browsers out for
+  the max-age window.
+- `HEALARR_TRUSTED_PROXIES` to configure which reverse proxies are trusted
+  for `X-Forwarded-For`. Defaults to trusting none so headers can't be
+  spoofed to bypass rate limiting.
+- `HEALARR_ALLOW_WHOLE_SERIES_SEARCH` opt-in for the old Sonarr
+  `MissingEpisodeSearch` fallback when no episode IDs are known.
+- Always-on response headers for the embedded SPA: `X-Content-Type-Options:
+  nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: same-origin`.
+- Startup WARN when `HEALARR_ENCRYPTION_KEY` is unset so the plaintext-secret
+  mode doesn't stay invisible.
+
+### Changed
+- `GetActiveScans` returns `[]ScanProgressSnapshot` (a read-only DTO) instead
+  of `[]ScanProgress`. The snapshot has no mutex and no channels, so copying
+  it through `append` no longer trips the `go vet` copylocks check.
+- The *arr connection test and periodic health probe now report the actual
+  cause of failure — DNS, connection refused, timeout, TLS error, 401, 403,
+  404, or a 5xx — instead of a generic "unhealthy: HTTP_STATUS".
+- MediaInfo corruption check flags zero-duration and zero-bitrate video/audio
+  tracks. A damaged container can still parse as valid JSON, so structural
+  checks alone aren't enough.
+- Missing detector binaries log at WARN with the configured path and the
+  relevant `HEALARR_*_PATH` variable, instead of returning a blank "ffprobe
+  failed:" stderr string.
+- Docker compose defaults ship with `init: true`, `no-new-privileges`, and
+  `cap_drop: ALL`.
+- README: dropped the emoji decorations on the feature list and tip
+  callouts, and corrected the log rotation description to 100MB per file,
+  3 backups, 28 day retention.
+
+### Fixed
+- `TriggerSearch` no longer silently falls through to `MissingEpisodeSearch`
+  when no episode IDs are known. The old behaviour could re-download every
+  missing episode in a series for one corrupt file. It now returns a targeted
+  error unless the opt-in env var is set.
+- Saving a scan path with `detection_args` filled in now works — the
+  frontend serialises the comma-separated value as `string[]` before
+  sending, and drops the field entirely when empty.
+- API handlers no longer leak raw `err.Error()` strings — including SQLite
+  internals — in their JSON responses. Database errors return a generic
+  "Database error"; the unauthenticated `/api/health` endpoint no longer
+  echoes database errors back to clients.
+- Notification test failures no longer return the raw internal error. The
+  handler logs at debug and returns a generic "Test notification failed".
+- CORS wildcard branch sends `Vary: Origin` to prevent cache poisoning.
+- `POST /setup/dismiss`, `/setup/import`, and `/setup/restore` are now behind
+  `SetupLimiter` (3 req/min per IP).
+- `APILimiter` (120 req/min per IP, burst 60) applied to all authenticated
+  endpoints.
+- Docker and release workflows fetch tags during checkout so the `:latest`
+  image reports the real tag name instead of a commit SHA.
+- Active scan rows on the dashboard are keyboard-navigable (Tab, Enter,
+  Space) and carry descriptive ARIA labels for screen readers.
+
+### Security
+- `/api/metrics` now requires authentication and rate limiting. Prometheus
+  scrapers authenticate via `Authorization: Bearer` or `X-API-Key`.
+
+### Tests & internals
+- Edge case tests for `EventReplayService` crash recovery (corrupted JSON,
+  empty event data, NULL user_id, DB errors) so one bad event can't block
+  replay of the rest.
+- Frontend ESLint errors cleaned up and lint is now enforced in CI.
+- Context threaded as a parameter in the verifier instead of stored on the
+  struct; cognitive complexity reductions in `countMediaFiles`; ~30 minor
+  SonarCloud code-smell fixes across handlers and integration code.
+
 ## [1.2.0] - 2026-01-19
 
 ### Added
