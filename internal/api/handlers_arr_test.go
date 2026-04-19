@@ -633,7 +633,7 @@ func TestTestArrConnection_Failure_ConnectionError(t *testing.T) {
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
 	assert.Equal(t, false, response["success"])
-	assert.Contains(t, response["error"], "Connection failed")
+	assert.Contains(t, response["error"], "refused")
 }
 
 func TestTestArrConnection_Failure_BadStatus(t *testing.T) {
@@ -665,7 +665,8 @@ func TestTestArrConnection_Failure_BadStatus(t *testing.T) {
 	var response map[string]interface{}
 	json.Unmarshal(w.Body.Bytes(), &response)
 	assert.Equal(t, false, response["success"])
-	assert.Contains(t, response["error"], "Server returned status 401")
+	assert.Contains(t, response["error"], "401")
+	assert.Contains(t, response["error"], "API key")
 }
 
 func TestTestArrConnection_InvalidJSON(t *testing.T) {

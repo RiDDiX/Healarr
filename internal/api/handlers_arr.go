@@ -279,9 +279,9 @@ func (s *RESTServer) testArrConnection(c *gin.Context) {
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
+			resp.Body.Close()
 			logger.Debugf("Connection test successful for %s", baseURL)
 			c.JSON(http.StatusOK, gin.H{
 				"success": true,
@@ -290,21 +290,46 @@ func (s *RESTServer) testArrConnection(c *gin.Context) {
 			return
 		}
 		lastStatus = resp.StatusCode
+		resp.Body.Close()
 		logger.Debugf("Connection test returned status %d for %s", resp.StatusCode, apiPath)
 	}
 
-	// All API versions failed
-	if lastErr != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"error":   fmt.Sprintf("Connection failed: %v", lastErr),
-		})
-		return
-	}
+	// All API versions failed — give the operator something actionable
 	c.JSON(http.StatusOK, gin.H{
 		"success": false,
-		"error":   fmt.Sprintf("Server returned status %d", lastStatus),
+		"error":   formatArrConnectionError(lastErr, lastStatus),
 	})
+}
+
+// formatArrConnectionError returns a terse, actionable error string for the UI
+// "Test connection" button. Distinguishes DNS/refused/timeout from 401/403/5xx.
+func formatArrConnectionError(transportErr error, lastStatus int) string {
+	if transportErr != nil {
+		msg := strings.ToLower(transportErr.Error())
+		switch {
+		case strings.Contains(msg, "no such host"):
+			return "Host not found — check the URL"
+		case strings.Contains(msg, "connection refused"):
+			return "Connection refused — is the service running on that port?"
+		case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline exceeded"):
+			return "Request timed out — check network path and firewall"
+		case strings.Contains(msg, "certificate"), strings.Contains(msg, "x509"), strings.Contains(msg, "tls"):
+			return "TLS/certificate error — check HTTPS config"
+		}
+		return fmt.Sprintf("Connection failed: %v", transportErr)
+	}
+	switch lastStatus {
+	case http.StatusUnauthorized:
+		return "API key rejected (HTTP 401) — double-check the key"
+	case http.StatusForbidden:
+		return "API key lacks permission (HTTP 403)"
+	case http.StatusNotFound:
+		return "Endpoint not found (HTTP 404) — wrong *arr type for this URL?"
+	}
+	if lastStatus >= 500 {
+		return fmt.Sprintf("Service error: HTTP %d", lastStatus)
+	}
+	return fmt.Sprintf("Server returned status %d", lastStatus)
 }
 
 // getArrRootFolders returns the root folders configured in a *arr instance.

@@ -1364,7 +1364,9 @@ func (c *HTTPArrClient) RefreshMonitoredDownloads(instance *ArrInstance) error {
 	return nil
 }
 
-// CheckInstanceHealth checks if an *arr instance is reachable by calling its system status endpoint
+// CheckInstanceHealth checks if an *arr instance is reachable by calling its system status endpoint.
+// The returned error distinguishes between network errors (bad URL / DNS / timeout),
+// auth errors (401/403), and other HTTP failures so operators can act on the cause.
 func (c *HTTPArrClient) CheckInstanceHealth(instanceID int64) error {
 	instance, err := c.getInstanceByIDInternal(instanceID)
 	if err != nil {
@@ -1379,14 +1381,52 @@ func (c *HTTPArrClient) CheckInstanceHealth(instanceID int64) error {
 
 	resp, err := c.doRequest(instance, "GET", endpoint, nil)
 	if err != nil {
-		return err
+		return classifyArrTransportError(err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unhealthy: %s", resp.Status)
+	return classifyArrHealthStatus(resp.StatusCode)
+}
+
+// classifyArrTransportError turns a raw transport/client error from the *arr HTTP
+// client into a terse, actionable message. Returns the original error wrapped.
+func classifyArrTransportError(err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "no such host"):
+		return fmt.Errorf("unreachable: host not found (check URL): %w", err)
+	case strings.Contains(msg, "connection refused"):
+		return fmt.Errorf("unreachable: connection refused (service down or wrong port): %w", err)
+	case strings.Contains(msg, "timeout"), strings.Contains(msg, "deadline exceeded"):
+		return fmt.Errorf("unreachable: request timed out (slow network or firewall): %w", err)
+	case strings.Contains(msg, "no route to host"), strings.Contains(msg, "network unreachable"):
+		return fmt.Errorf("unreachable: no route to host: %w", err)
+	case strings.Contains(msg, "certificate"), strings.Contains(msg, "x509"), strings.Contains(msg, "tls"):
+		return fmt.Errorf("unreachable: TLS/certificate error: %w", err)
+	}
+	return fmt.Errorf("unreachable: %w", err)
+}
+
+// classifyArrHealthStatus turns a non-OK HTTP response from an *arr
+// system/status probe into a short, concrete error. Returns nil for 200.
+func classifyArrHealthStatus(status int) error {
+	switch {
+	case status == http.StatusOK:
+		return nil
+	case status == http.StatusUnauthorized:
+		return fmt.Errorf("authentication failed: API key rejected (HTTP 401)")
+	case status == http.StatusForbidden:
+		return fmt.Errorf("authentication failed: API key lacks permission (HTTP 403)")
+	case status == http.StatusNotFound:
+		return fmt.Errorf("endpoint not found (HTTP 404) — wrong *arr type or URL path")
+	case status >= 500:
+		return fmt.Errorf("service error: *arr returned HTTP %d", status)
+	default:
+		return fmt.Errorf("unexpected response: HTTP %d", status)
+	}
 }
 
 // =============================================================================
