@@ -2162,15 +2162,21 @@ func TestNotifier_LoadConfigs_InvalidEventsJSON(t *testing.T) {
 
 	n := NewNotifier(tdb.DB, eb)
 
-	// loadConfigs should skip configs with invalid JSON without error
+	// loadConfigs should tolerate invalid events JSON by falling back to an
+	// empty event list — the config itself is still usable, the user can just
+	// re-pick the events they want.
 	err = n.loadConfigs()
 	if err != nil {
 		t.Fatalf("loadConfigs failed unexpectedly: %v", err)
 	}
 
-	// The invalid config should not be loaded
-	if len(n.configs) != 0 {
-		t.Errorf("Expected 0 configs (invalid skipped), got %d", len(n.configs))
+	if len(n.configs) != 1 {
+		t.Fatalf("Expected 1 config (loaded with empty events), got %d", len(n.configs))
+	}
+	for _, cfg := range n.configs {
+		if len(cfg.Events) != 0 {
+			t.Errorf("Expected empty events on invalid JSON, got %v", cfg.Events)
+		}
 	}
 }
 
