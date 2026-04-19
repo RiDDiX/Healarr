@@ -75,7 +75,7 @@ const (
 const (
 	// ModeQuick performs header-only analysis (fast).
 	ModeQuick = "quick"
-	// ModeThorough performs full stream decoding (slow but comprehensive).
+	// ModeThorough performs full stream decoding (slow, decodes every frame).
 	ModeThorough = "thorough"
 )
 
@@ -84,6 +84,27 @@ type DetectionConfig struct {
 	Method DetectionMethod
 	Args   []string
 	Mode   string // "quick" or "thorough"
+	// Fallbacks are tried in order when the primary detector fails with a
+	// recoverable (non-corruption) error — for example when the binary is
+	// missing or the subprocess crashes. A detector that reports actual
+	// corruption is authoritative and is not overridden by a fallback.
+	Fallbacks []DetectionMethod
+}
+
+// DefaultFallbacksFor returns the built-in fallback chain for the given
+// primary detector. Used when the user hasn't configured Fallbacks explicitly,
+// so scans keep running when a tool is missing or broken.
+func DefaultFallbacksFor(primary DetectionMethod) []DetectionMethod {
+	switch primary {
+	case DetectionFFprobe:
+		return []DetectionMethod{DetectionMediaInfo}
+	case DetectionMediaInfo:
+		return []DetectionMethod{DetectionFFprobe}
+	case DetectionHandBrake:
+		return []DetectionMethod{DetectionFFprobe, DetectionMediaInfo}
+	default:
+		return nil
+	}
 }
 
 // CmdHealthChecker validates media files using external command-line tools.
@@ -127,6 +148,9 @@ func (hc *CmdHealthChecker) Check(path string, mode string) (bool, *HealthCheckE
 }
 
 // CheckWithConfig validates a media file using the specified detection configuration.
+// If config.Fallbacks is populated, detectors are tried in order when the primary
+// fails with a recoverable error (missing binary, subprocess crash, etc.). A
+// detector that reports true corruption is authoritative and stops the chain.
 func (hc *CmdHealthChecker) CheckWithConfig(path string, config DetectionConfig) (bool, *HealthCheckError) {
 	// 0. Validate path to prevent command injection before any subprocess execution
 	if err := validateMediaPath(path); err != nil {
@@ -152,22 +176,44 @@ func (hc *CmdHealthChecker) CheckWithConfig(path string, config DetectionConfig)
 		mode = ModeQuick
 	}
 
-	// 3. Run appropriate detector with mode awareness
-	switch config.Method {
+	// 3. Run primary detector, with optional fallback chain on recoverable errors
+	chain := append([]DetectionMethod{config.Method}, config.Fallbacks...)
+	var lastErr *HealthCheckError
+	for i, method := range chain {
+		ok, herr := hc.runSingleDetector(path, method, config.Args, mode)
+		if ok {
+			return true, nil
+		}
+		// A detector that saw real corruption wins. Don't let a weaker
+		// fallback mask it.
+		if herr != nil && herr.IsTrueCorruption() {
+			return false, herr
+		}
+		lastErr = herr
+		if i+1 < len(chain) {
+			logger.Warnf("detector %s failed for %s (%s): %s — trying fallback %s",
+				method, path, errTypeOrUnknown(herr), errMessageOrEmpty(herr), chain[i+1])
+		}
+	}
+	if lastErr == nil {
+		lastErr = &HealthCheckError{Type: ErrorTypeInvalidConfig, Message: "unknown detection method"}
+	}
+	return false, lastErr
+}
+
+// runSingleDetector executes one detector method and returns a normalised result.
+func (hc *CmdHealthChecker) runSingleDetector(path string, method DetectionMethod, args []string, mode string) (bool, *HealthCheckError) {
+	switch method {
 	case DetectionFFprobe:
-		err := hc.runFFprobeWithArgs(path, config.Args, mode)
-		if err != nil {
+		if err := hc.runFFprobeWithArgs(path, args, mode); err != nil {
 			return false, hc.classifyDetectorError(err, path)
 		}
 	case DetectionMediaInfo:
-		err := hc.runMediaInfo(path, config.Args, mode)
-		if err != nil {
+		if err := hc.runMediaInfo(path, args, mode); err != nil {
 			return false, hc.classifyDetectorError(err, path)
 		}
 	case DetectionHandBrake:
-		err := hc.runHandBrakeWithArgs(path, config.Args, mode)
-		if err != nil {
-			// HandBrake errors are typically stream-level corruption
+		if err := hc.runHandBrakeWithArgs(path, args, mode); err != nil {
 			errStr := err.Error()
 			if strings.Contains(errStr, "No such file or directory") ||
 				strings.Contains(errStr, "does not exist") {
@@ -175,11 +221,26 @@ func (hc *CmdHealthChecker) CheckWithConfig(path string, config DetectionConfig)
 			}
 			return false, &HealthCheckError{Type: ErrorTypeCorruptStream, Message: errStr}
 		}
+	case DetectionZeroByte:
+		return hc.checkZeroByte(path)
 	default:
 		return false, &HealthCheckError{Type: ErrorTypeInvalidConfig, Message: "unknown detection method"}
 	}
-
 	return true, nil
+}
+
+func errTypeOrUnknown(e *HealthCheckError) string {
+	if e == nil {
+		return "unknown"
+	}
+	return e.Type
+}
+
+func errMessageOrEmpty(e *HealthCheckError) string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
 }
 
 // checkAccessibility performs pre-flight checks to distinguish between

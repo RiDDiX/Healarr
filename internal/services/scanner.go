@@ -479,6 +479,9 @@ func (s *ScannerService) resumeScan(cfg resumeScanConfig) {
 			Mode:   "quick",
 		}
 	}
+	if detectionConfig.Fallbacks == nil {
+		detectionConfig.Fallbacks = integration.DefaultFallbacksFor(detectionConfig.Method)
+	}
 
 	scanID := uuid.New().String()
 	progress := &ScanProgress{
@@ -720,13 +723,15 @@ func (s *ScannerService) loadScanPathSettings(pathID int64) scanPathSettings {
 		}
 	}
 
+	method := integration.DetectionMethod(detectionMethod)
 	return scanPathSettings{
 		AutoRemediate: autoRemediate,
 		DryRun:        dryRun,
 		DetectionConfig: integration.DetectionConfig{
-			Method: integration.DetectionMethod(detectionMethod),
-			Args:   detectionArgs,
-			Mode:   detectionMode,
+			Method:    method,
+			Args:      detectionArgs,
+			Mode:      detectionMode,
+			Fallbacks: integration.DefaultFallbacksFor(method),
 		},
 	}
 }
