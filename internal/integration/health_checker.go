@@ -202,7 +202,7 @@ func (hc *CmdHealthChecker) CheckWithConfig(path string, config DetectionConfig)
 	return false, lastErr
 }
 
-// runSingleDetector executes one detector method and returns a normalised result.
+// runSingleDetector executes one detector method and returns a normalized result.
 func (hc *CmdHealthChecker) runSingleDetector(path string, method DetectionMethod, args []string, mode string) (bool, *HealthCheckError) {
 	switch method {
 	case DetectionFFprobe:
@@ -714,7 +714,7 @@ func findSuspiciousMediaTrack(tracks []interface{}) string {
 	return ""
 }
 
-// parseMediaInfoFloat accepts MediaInfo's numeric fields which can be serialised
+// parseMediaInfoFloat accepts MediaInfo's numeric fields which can be serialized
 // as either JSON numbers or decimal strings. Returns 0 when the value is
 // missing or unparseable.
 func parseMediaInfoFloat(v interface{}) float64 {

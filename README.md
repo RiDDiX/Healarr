@@ -22,7 +22,7 @@ Healarr monitors your media library for corrupted files and automatically trigge
 - **Scheduled scans** — cron-based automatic scanning (TZ via `HEALARR_TZ` or `TZ`)
 - **Webhook trigger** — scan files immediately when *arr reports a finished import
 - **Modern UI** — dark/light themes, responsive design
-- **Database maintenance** — automatic pruning, integrity checks, and optimisation
+- **Database maintenance** — automatic pruning, integrity checks, and optimization
 
 ### Supported *arr Applications
 
