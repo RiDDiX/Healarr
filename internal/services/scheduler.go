@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -39,13 +40,30 @@ type SchedulerService struct {
 }
 
 // NewSchedulerService creates a new SchedulerService with the given database and scanner.
+// Cron expressions are interpreted in the TZ from $HEALARR_TZ or $TZ, falling back to local time.
 func NewSchedulerService(db *sql.DB, scanner *ScannerService) *SchedulerService {
 	return &SchedulerService{
 		db:      db,
 		scanner: scanner,
-		cron:    cron.New(),
+		cron:    cron.New(cron.WithLocation(cronLocation())),
 		jobs:    make(map[int]cron.EntryID),
 	}
+}
+
+// cronLocation picks a timezone for cron schedules. HEALARR_TZ wins if set,
+// then TZ, then local time. Invalid values log a warning and fall back.
+func cronLocation() *time.Location {
+	for _, v := range []string{os.Getenv("HEALARR_TZ"), os.Getenv("TZ")} {
+		if v == "" {
+			continue
+		}
+		if loc, err := time.LoadLocation(v); err == nil {
+			logger.Debugf("Scheduler: using timezone %s", v)
+			return loc
+		}
+		logger.Warnf("Scheduler: invalid timezone %q, falling back to local time", v)
+	}
+	return time.Local
 }
 
 // Start initializes the cron engine and loads schedules from the database.
