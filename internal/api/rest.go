@@ -99,6 +99,11 @@ func NewRESTServer(deps ServerDeps) *RESTServer {
 		}
 	}
 
+	// HSTS is only meaningful over HTTPS. Users behind TLS can turn it on
+	// explicitly; we don't set it automatically because that can lock a plain-HTTP
+	// deployment out of the browser for the max-age window if the header leaks.
+	hstsEnabled := strings.EqualFold(os.Getenv("HEALARR_HSTS"), "true")
+
 	r.Use(func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
 
@@ -114,6 +119,14 @@ func NewRESTServer(deps ServerDeps) *RESTServer {
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-API-Key, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		// Defense-in-depth headers for the embedded SPA.
+		c.Writer.Header().Set("X-Content-Type-Options", "nosniff")
+		c.Writer.Header().Set("X-Frame-Options", "DENY")
+		c.Writer.Header().Set("Referrer-Policy", "same-origin")
+		if hstsEnabled {
+			c.Writer.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
