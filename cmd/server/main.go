@@ -14,6 +14,7 @@ import (
 
 	"github.com/mescon/Healarr/internal/api"
 	"github.com/mescon/Healarr/internal/config"
+	"github.com/mescon/Healarr/internal/crypto"
 	"github.com/mescon/Healarr/internal/db"
 	"github.com/mescon/Healarr/internal/eventbus"
 	"github.com/mescon/Healarr/internal/integration"
@@ -116,6 +117,9 @@ func logConfiguration(cfg *config.Config) {
 	}
 	if cfg.DryRunMode {
 		logger.Infof("  ⚠️  DRY-RUN MODE: ENABLED (no files will be deleted)")
+	}
+	if !crypto.EncryptionEnabled() {
+		logger.Warnf("HEALARR_ENCRYPTION_KEY is not set — *arr API keys and notification secrets are stored in plaintext. Set this variable to enable AES-256 encryption at rest.")
 	}
 }
 
