@@ -38,7 +38,7 @@ func (m *webhookMockScanner) ScanFile(path string) error {
 
 func (m *webhookMockScanner) ScanPath(_ int64, _ string) error        { return nil }
 func (m *webhookMockScanner) IsPathBeingScanned(_ string) bool        { return false }
-func (m *webhookMockScanner) GetActiveScans() []services.ScanProgress { return nil }
+func (m *webhookMockScanner) GetActiveScans() []services.ScanProgressSnapshot { return nil }
 func (m *webhookMockScanner) CancelScan(_ string) error               { return nil }
 func (m *webhookMockScanner) PauseScan(_ string) error                { return nil }
 func (m *webhookMockScanner) ResumeScan(_ string) error               { return nil }

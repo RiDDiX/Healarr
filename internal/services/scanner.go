@@ -210,6 +210,22 @@ type ScanProgress struct {
 	isThrottled     bool               `json:"-"`                    // Whether this scan is being throttled
 }
 
+// ScanProgressSnapshot is a read-only copy of ScanProgress suitable for API
+// responses and aggregations. It carries the JSON-exported fields only — no
+// mutex, no channels.
+type ScanProgressSnapshot struct {
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Path        string `json:"path"`
+	PathID      int64  `json:"path_id,omitempty"`
+	TotalFiles  int    `json:"total_files"`
+	FilesDone   int    `json:"files_done"`
+	CurrentFile string `json:"current_file"`
+	Status      string `json:"status"`
+	StartTime   string `json:"start_time"`
+	ScanDBID    int64  `json:"scan_db_id,omitempty"`
+}
+
 // scanPathConfig holds cached scan path configuration
 type scanPathConfig struct {
 	LocalPath     string
@@ -247,7 +263,7 @@ type Scanner interface {
 	ScanFile(localPath string) error
 	ScanPath(pathID int64, localPath string) error
 	IsPathBeingScanned(path string) bool
-	GetActiveScans() []ScanProgress
+	GetActiveScans() []ScanProgressSnapshot
 	CancelScan(scanID string) error
 	PauseScan(scanID string) error
 	ResumeScan(scanID string) error
@@ -1481,32 +1497,26 @@ func (s *ScannerService) emitProgress(p *ScanProgress) {
 }
 
 // GetActiveScans returns a copy of all currently active scan progress states.
-func (s *ScannerService) GetActiveScans() []ScanProgress {
+func (s *ScannerService) GetActiveScans() []ScanProgressSnapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	scans := make([]ScanProgress, 0, len(s.activeScans))
+	scans := make([]ScanProgressSnapshot, 0, len(s.activeScans))
 	for _, scan := range s.activeScans {
-		// Lock individual scan to safely copy mutable fields (fixes data race)
 		scan.mu.Lock()
-		// Manually copy fields to avoid copylocks warning (mutex is not copied)
-		scanCopy := ScanProgress{
-			ID:              scan.ID,
-			Type:            scan.Type,
-			Path:            scan.Path,
-			PathID:          scan.PathID,
-			TotalFiles:      scan.TotalFiles,
-			FilesDone:       scan.FilesDone,
-			CurrentFile:     scan.CurrentFile,
-			Status:          scan.Status,
-			StartTime:       scan.StartTime,
-			ScanDBID:        scan.ScanDBID,
-			isPaused:        scan.isPaused,
-			corruptionCount: scan.corruptionCount,
-			isThrottled:     scan.isThrottled,
-			// Note: cancel, pauseChan, resumeChan are not copied (internal use only)
+		snapshot := ScanProgressSnapshot{
+			ID:          scan.ID,
+			Type:        scan.Type,
+			Path:        scan.Path,
+			PathID:      scan.PathID,
+			TotalFiles:  scan.TotalFiles,
+			FilesDone:   scan.FilesDone,
+			CurrentFile: scan.CurrentFile,
+			Status:      scan.Status,
+			StartTime:   scan.StartTime,
+			ScanDBID:    scan.ScanDBID,
 		}
 		scan.mu.Unlock()
-		scans = append(scans, scanCopy) //nolint:govet // scanCopy has fresh zero-valued mutex, not copied from original
+		scans = append(scans, snapshot)
 	}
 	return scans
 }
