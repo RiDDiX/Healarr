@@ -14,15 +14,15 @@ Healarr monitors your media library for corrupted files and automatically trigge
 
 ## Features
 
-- 🔍 **Multi-Method Detection** - ffprobe, MediaInfo, or HandBrake-based health checks
-- 🔄 **Automatic Remediation** - Deletes corrupt files and triggers *arr search
-- ✅ **Verification** - Confirms new downloads are healthy before marking resolved
-- 📊 **Dashboard** - Real-time stats, charts, and corruption type breakdown
-- 🔔 **Notifications** - Discord, Slack, Telegram, Pushover, Gotify, ntfy, Email, webhooks
-- 📅 **Scheduled Scans** - Cron-based automatic scanning
-- 🌐 **Webhook Integration** - Scan files immediately when *arr downloads complete
-- 🎨 **Modern UI** - Dark/light themes, responsive design
-- 🗄️ **Database Maintenance** - Automatic pruning, integrity checks, and optimization
+- **Multi-method detection** — ffprobe, MediaInfo, or HandBrake-based health checks, with an automatic fallback chain if a tool is missing
+- **Automatic remediation** — deletes corrupt files via the *arr API and triggers a targeted re-search
+- **Verification** — confirms new downloads are healthy before marking resolved
+- **Dashboard** — stats, charts, and corruption type breakdown with live updates
+- **Notifications** — Discord, Slack, Telegram, Pushover, Gotify, ntfy, email, and generic webhooks
+- **Scheduled scans** — cron-based automatic scanning (TZ via `HEALARR_TZ` or `TZ`)
+- **Webhook trigger** — scan files immediately when *arr reports a finished import
+- **Modern UI** — dark/light themes, responsive design
+- **Database maintenance** — automatic pruning, integrity checks, and optimisation
 
 ### Supported *arr Applications
 
@@ -56,7 +56,7 @@ services:
       - /path/to/media:/media:ro  # Read-only access to your media
 ```
 
-> **💡 Tip: Matching paths with your *arr apps**  
+> **Tip — matching paths with your *arr apps**
 > If you mount media using the same internal path that Sonarr/Radarr uses, you won't need to configure path translation. For example, if Sonarr sees `/tv`, mount your media as `-v /path/to/tv:/tv:ro` and Healarr will see the same paths as Sonarr.
 
 ```bash
@@ -277,7 +277,7 @@ Healarr stores all persistent data in a `config` directory, making it easy to ba
 ├── healarr.db      # SQLite database
 ├── backups/        # Automatic database backups (every 6 hours, last 5 kept)
 └── logs/
-    └── healarr.log # Application logs (auto-rotated, 100MB max, 7 days retention)
+    └── healarr.log # Application logs (auto-rotated, 100MB max per file, 3 backups, 28 day retention)
 ```
 
 ### Database Maintenance
@@ -333,7 +333,7 @@ HEALARR_DATA_DIR=/opt/healarr/config ./healarr
    - **\*arr Instance**: Select the matching instance
 4. Save and run your first scan!
 
-> **💡 Pro tip:** If you mount media with the same path as your *arr apps (e.g., Sonarr sees `/tv` and you mount `-v /host/tv:/tv:ro`), set both Local Path and *arr Path to the same value. This eliminates path translation issues.
+> **Tip:** if you mount media with the same path as your *arr apps (e.g. Sonarr sees `/tv` and you mount `-v /host/tv:/tv:ro`), set both Local Path and *arr Path to the same value. That avoids path translation entirely.
 
 ### Webhook Integration (Recommended)
 
