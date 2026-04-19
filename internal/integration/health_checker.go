@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -502,11 +503,30 @@ func (hc *CmdHealthChecker) runFFprobeWithArgs(path string, customArgs []string,
 		return fmt.Errorf("%s timed out after %v", cmdName, timeout)
 	case err := <-done:
 		if err != nil {
-			return fmt.Errorf("%s failed: %s", cmdName, stderr.String())
+			if isBinaryMissingError(err) {
+				logger.Warnf("Detector %s not found at %q — check HEALARR_%s_PATH or install the tool in the container", cmdName, cmdPath, strings.ToUpper(cmdName))
+				return fmt.Errorf("%s binary not found: %w", cmdName, err)
+			}
+			stderrText := strings.TrimSpace(stderr.String())
+			if stderrText == "" {
+				return fmt.Errorf("%s failed: %w", cmdName, err)
+			}
+			return fmt.Errorf("%s failed: %s", cmdName, stderrText)
 		}
 	}
 
 	return nil
+}
+
+// isBinaryMissingError returns true when exec.Cmd failed because the binary
+// could not be located or executed (ENOENT on the executable itself).
+func isBinaryMissingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "executable file not found") ||
+		strings.Contains(msg, "no such file or directory") && strings.Contains(msg, "fork/exec")
 }
 
 func (hc *CmdHealthChecker) runHandBrakeWithArgs(path string, customArgs []string, mode string) error {
@@ -650,6 +670,9 @@ func validateMediaInfoOutput(data []byte) error {
 	if !hasValidMediaTrack(tracks) {
 		return fmt.Errorf("mediainfo: no video or audio tracks found in file")
 	}
+	if bad := findSuspiciousMediaTrack(tracks); bad != "" {
+		return fmt.Errorf("mediainfo: %s", bad)
+	}
 	return nil
 }
 
@@ -666,6 +689,51 @@ func hasValidMediaTrack(tracks []interface{}) bool {
 		}
 	}
 	return false
+}
+
+// findSuspiciousMediaTrack looks for video/audio tracks with impossible values
+// (zero duration, zero bitrate) that indicate the container is damaged even if
+// structurally parseable. Returns a short reason string, or "" when tracks look fine.
+func findSuspiciousMediaTrack(tracks []interface{}) string {
+	for _, track := range tracks {
+		t, ok := track.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		trackType, _ := t["@type"].(string)
+		if trackType != "Video" && trackType != "Audio" {
+			continue
+		}
+		if parseMediaInfoFloat(t["Duration"]) == 0 && hasField(t, "Duration") {
+			return fmt.Sprintf("%s track reports zero duration", strings.ToLower(trackType))
+		}
+		if parseMediaInfoFloat(t["BitRate"]) == 0 && hasField(t, "BitRate") {
+			return fmt.Sprintf("%s track reports zero bitrate", strings.ToLower(trackType))
+		}
+	}
+	return ""
+}
+
+// parseMediaInfoFloat accepts MediaInfo's numeric fields which can be serialised
+// as either JSON numbers or decimal strings. Returns 0 when the value is
+// missing or unparseable.
+func parseMediaInfoFloat(v interface{}) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
+		if err != nil {
+			return 0
+		}
+		return f
+	}
+	return 0
+}
+
+func hasField(m map[string]interface{}, key string) bool {
+	_, ok := m[key]
+	return ok
 }
 
 func (hc *CmdHealthChecker) runMediaInfo(path string, customArgs []string, mode string) error {
